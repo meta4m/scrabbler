@@ -1,0 +1,27 @@
+{
+  "name": "scrabbler",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc -b && vite build",
+    "test": "vitest run",
+    "preview": "vite preview",
+    "deploy:preview": "npm run build && wrangler pages deploy dist --project-name scrabbler --branch preview",
+    "deploy:production": "npm run build && wrangler pages deploy dist --project-name scrabbler"
+  },
+  "dependencies": {
+    "@vitejs/plugin-react": "latest",
+    "vite": "latest",
+    "typescript": "latest",
+    "react": "latest",
+    "react-dom": "latest"
+  },
+  "devDependencies": {
+    "@types/react": "latest",
+    "@types/react-dom": "latest",
+    "vitest": "latest",
+    "jsdom": "latest"
+  }
+}

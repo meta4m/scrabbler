@@ -42,6 +42,17 @@ Each deployment also receives a public immutable URL, such as
 `https://f362c9cc.scrabbler.pages.dev`; GitHub Actions logs and the Pages
 dashboard provide the current deployment-specific preview URL.
 
+`CLOUDFLARE_API_TOKEN` must be a durable Cloudflare API token, not the
+short-lived OAuth credential returned by `wrangler auth token`. Create a custom
+token scoped to this account with **Cloudflare Pages: Edit**, then add it with:
+
+```bash
+gh secret set CLOUDFLARE_API_TOKEN --repo meta4m/scrabbler
+```
+
+The command reads the token securely from standard input and stores it as an
+encrypted GitHub secret. Never put the token in the repository or workflow YAML.
+
 ## Manual preview fallback
 
 Preview deployments use the `preview` branch and return a public `*.pages.dev`

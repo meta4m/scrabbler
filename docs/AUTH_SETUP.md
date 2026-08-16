@@ -46,6 +46,10 @@ The GitHub Pages deployment workflow does not run database migrations
 automatically, so an application deployment cannot accidentally change the
 production schema.
 
+For the Pages workflow, use a separate durable Cloudflare API token with
+**Cloudflare Pages: Edit** permission. The OAuth token used by a local
+`wrangler login` session is not a replacement for that GitHub secret.
+
 ## Local development
 
 Copy `.dev.vars.example` to `.dev.vars`, replace the placeholders, and run the

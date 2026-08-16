@@ -56,8 +56,8 @@ Phase 4 milestone note: Tournament Lab now provides a timed local practice table
 ## Phase 5: Deployment
 - [x] Cloudflare Pages configuration and deployment runbook
 - [x] GitHub Actions deployment workflow and Pages project
-- [ ] Public preview URL
-- [ ] Production URL
+- [x] Public deployment/preview URL
+- [x] Production URL
 - [ ] Optional custom domain
 - [ ] Optional synchronized player profile
 
@@ -65,9 +65,11 @@ Phase 5 note: The static Vite build is configured for Cloudflare Pages through
 `wrangler.jsonc`. The `scrabbler` Pages project exists, and GitHub Actions now
 builds/tests every deployment and publishes production from `main` plus
 repository pull-request previews. `CLOUDFLARE_ACCOUNT_ID` is set in GitHub;
-the repository still needs `CLOUDFLARE_API_TOKEN` before the first workflow
-deployment. Attempts remain local in the browser; synchronized profiles require
-an explicit identity and storage design before implementation.
+`CLOUDFLARE_API_TOKEN` is stored as an encrypted GitHub secret. The verified
+production URL is `https://scrabbler.pages.dev`; the current deployment-specific
+public URL is recorded in `docs/DEPLOYMENT.md`. Attempts remain local in the
+browser; synchronized profiles require an explicit identity and storage design
+before implementation.
 
 ## Phase 6: Meaning enrichment
 - [ ] Add verified one-line meanings from public/open sources

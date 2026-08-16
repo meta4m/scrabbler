@@ -36,9 +36,11 @@ CLOUDFLARE_ACCOUNT_ID
 ```
 
 The API token needs Pages write access for the account. The account ID is the
-Cloudflare account containing the `scrabbler` Pages project. The project has
-already been created as `scrabbler`; the first successful workflow deployment
-will make `https://scrabbler.pages.dev` live.
+Cloudflare account containing the `scrabbler` Pages project. The first
+successful workflow deployment has made `https://scrabbler.pages.dev` live.
+Each deployment also receives a public immutable URL, such as
+`https://f362c9cc.scrabbler.pages.dev`; GitHub Actions logs and the Pages
+dashboard provide the current deployment-specific preview URL.
 
 ## Manual preview fallback
 

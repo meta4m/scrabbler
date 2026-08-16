@@ -8,13 +8,13 @@ Challenge -> timed response -> correctness -> feedback/family -> next challenge 
 
 ## Navigation
 1. Lookup
-2. Quick Drill
-3. Bingo
-4. 2-Letter
-5. Q/J/X/Z
-6. Dumps
-7. My Weak Words
-8. Tournament Lab
+2. Quick drill
+3. My progress
+4. Rack lab
+5. Tournament
+
+Quick drill contains Bingo, 2-letter, Q/J/X/Z, dump, all-letter, and adaptive
+practice modes.
 
 ## MVP UX
 Each drill should show one clear challenge, start timing automatically, accept keyboard input where appropriate, show correctness immediately, record latency, and offer the next challenge without unnecessary navigation.

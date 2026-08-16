@@ -29,7 +29,7 @@ Initial vocabulary source: the user's `Word Study.pdf`. It contains 2-letter wor
 - J/Q/X/Z Trainer
 - Dump Trainer: I, U, vowel dumps
 - Adaptive Training
-- Tournament Mode (future)
+- Tournament Lab (with deeper board simulation still future)
 
 ## Suggested mastery
 UNKNOWN -> RECOGNIZED -> RECALLABLE -> FAST -> AUTOMATIC

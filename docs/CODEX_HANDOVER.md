@@ -63,9 +63,11 @@ Security design: PKCE OAuth, signed short-lived OAuth state cookie, Secure/HttpO
 
 The durable Cloudflare API token has now been created with Pages Write scoped to
 the Scrabbler account and stored as the GitHub `CLOUDFLARE_API_TOKEN` secret.
-The next deployment should therefore be triggered and inspected. Google OAuth
-client credentials are still not configured in the production Pages project,
-so end-to-end sign-in cannot be completed until those credentials are supplied.
+Commit `672da7a` was pushed and GitHub Actions run `31971925264` completed
+successfully, including tests, build, Functions type-check, and Pages publish.
+Google OAuth client credentials are still not configured in the production
+Pages project, so end-to-end sign-in cannot be completed until those credentials
+are supplied.
 
 Wrangler investigation established that:
 
@@ -179,6 +181,12 @@ Uncommitted documentation changes from the prior session:
 - 8 tests passing.
 - `npm run build` passed.
 - `npx tsc -p functions/tsconfig.json --noEmit` passed.
+- Production homepage returned HTTP 200 after deployment.
+- Production `/api/me` returned `{"user":null}` while unauthenticated.
+- Production Pages secret listing confirms `SESSION_SECRET`; Google OAuth secrets
+  are not yet configured.
+- GitHub Actions run `31971925264` passed all deployment steps for commit
+  `672da7a`.
 - Wrangler Pages dev compiled Functions and recognized the D1 binding.
 - A local Wrangler startup also encountered `uv_interface_addresses returned Unknown system error 1`; this appeared to be an environment/network-interface issue.
 

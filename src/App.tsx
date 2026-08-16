@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { bingoFamilies, categoryLabels, normalize, scoreWord, type DrillType, uniqueSourceWords, words, wordsForDrill, wordsFromRack } from './data/words'
-import { accuracy, averageLatency, drillLabel, dueWords, loadAttempts, saveAttempt, selectAdaptiveWord, weakWords, wordStats, type Attempt } from './lib/training'
+import { accuracy, averageLatency, drillLabel, dueWords, loadAttempts, mergeAttempts, saveAttempt, selectAdaptiveWord, weakWords, wordStats, type Attempt } from './lib/training'
+import { loadProfile, loadRemoteAttempts, syncRemoteAttempts, type ProfileUser } from './lib/auth'
 import { anagramsFor, bingoFamilyFor, dumpPlaysFor, extensionsFor, hooksFor, rackPlays, randomRack } from './lib/scrabble'
 import { categoryForPlay, createTournamentPosition, isLegalSourcePlay, scoreMove, type TournamentPosition } from './lib/tournament'
 
@@ -23,11 +24,39 @@ function App() {
   const [view, setView] = useState<View>('home')
   const [activeDrill, setActiveDrill] = useState<DrillType | null>(null)
   const [attempts, setAttempts] = useState<Attempt[]>(loadAttempts)
+  const [user, setUser] = useState<ProfileUser | null>(null)
+  const [syncState, setSyncState] = useState<'local' | 'loading' | 'synced' | 'syncing' | 'error'>('loading')
   const [query, setQuery] = useState('')
   const [lookupCategory, setLookupCategory] = useState<'all' | '2-letter' | 'power' | 'dump'>('all')
 
   const beginDrill = (drill: DrillType) => { setActiveDrill(drill); setView('drill') }
-  const record = (attempt: Attempt) => setAttempts(saveAttempt(attempt))
+  useEffect(() => {
+    let mounted = true
+    void loadProfile().then(async (profile) => {
+      if (!mounted) return
+      setUser(profile)
+      if (!profile) { setSyncState('local'); return }
+      const remote = await loadRemoteAttempts()
+      if (!mounted) return
+      if (remote) {
+        const merged = mergeAttempts(loadAttempts(), remote)
+        setAttempts(merged)
+        setSyncState('syncing')
+        await syncRemoteAttempts(merged)
+        if (mounted) setSyncState('synced')
+      } else setSyncState('error')
+    }).catch(() => mounted && setSyncState('error'))
+    return () => { mounted = false }
+  }, [])
+
+  const record = (attempt: Attempt) => {
+    const next = saveAttempt(attempt)
+    setAttempts(next)
+    if (user) {
+      setSyncState('syncing')
+      void syncRemoteAttempts(next).then((ok) => setSyncState(ok ? 'synced' : 'error'))
+    }
+  }
 
   const results = useMemo(() => words.filter((word) => {
     const matchesQuery = !query || word.spelling.includes(normalize(query)) || word.signature.includes(normalize(query))
@@ -45,7 +74,7 @@ function App() {
         <NavButton active={view === 'rack'} onClick={() => setView('rack')} icon="chart">Rack lab</NavButton>
         <NavButton active={view === 'tournament'} onClick={() => setView('tournament')} icon="clock">Tournament</NavButton>
       </nav>
-      <div className="source-badge"><span className="live-dot" /> CSW24 study source</div>
+      <div className="source-badge"><span className="live-dot" /> CSW24 study source</div><AuthControls user={user} syncState={syncState} />
     </header>
     <main>
       {view === 'home' && <Home onLookup={() => setView('lookup')} onDrill={beginDrill} attempts={attempts} />}
@@ -60,6 +89,12 @@ function App() {
 }
 
 function NavButton({ active, onClick, icon, children }: { active: boolean; onClick: () => void; icon: 'search' | 'bolt' | 'chart' | 'clock'; children: string }) { return <button className={`nav-button ${active ? 'active' : ''}`} onClick={onClick}><Icon name={icon} />{children}</button> }
+
+function AuthControls({ user, syncState }: { user: ProfileUser | null; syncState: 'local' | 'loading' | 'synced' | 'syncing' | 'error' }) {
+  if (syncState === 'loading') return <span className="auth-status">Checking profile…</span>
+  if (!user) return <a className="auth-button" href="/api/auth/google">Sign in with Google</a>
+  return <div className="auth-controls"><span className="auth-user">{user.name}</span><span className={`auth-status ${syncState === 'error' ? 'auth-error' : ''}`}>{syncState === 'syncing' ? 'Syncing…' : syncState === 'error' ? 'Sync paused' : 'Synced'}</span><a className="auth-link" href="/api/auth/logout">Sign out</a></div>
+}
 
 function Home({ onLookup, onDrill, attempts }: { onLookup: () => void; onDrill: (drill: DrillType) => void; attempts: Attempt[] }) {
   return <div className="home-page">

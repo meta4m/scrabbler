@@ -6,11 +6,17 @@ export const ATTEMPTS_KEY = 'scrabbler.attempts.v1'
 export const loadAttempts = (): Attempt[] => {
   try { return JSON.parse(localStorage.getItem(ATTEMPTS_KEY) ?? '[]') as Attempt[] } catch { return [] }
 }
-export const saveAttempt = (attempt: Attempt) => {
-  const next = [attempt, ...loadAttempts()].slice(0, 500)
+export const saveAttempts = (attempts: Attempt[]) => {
+  const next = attempts.slice().sort((left, right) => new Date(right.timestamp).getTime() - new Date(left.timestamp).getTime()).slice(0, 500)
   localStorage.setItem(ATTEMPTS_KEY, JSON.stringify(next))
   return next
 }
+export const mergeAttempts = (local: Attempt[], remote: Attempt[]) => {
+  const merged = new Map<string, Attempt>()
+  ;[...remote, ...local].forEach((attempt) => merged.set(attempt.id, attempt))
+  return saveAttempts([...merged.values()])
+}
+export const saveAttempt = (attempt: Attempt) => saveAttempts([attempt, ...loadAttempts()])
 export const accuracy = (attempts: Attempt[]) => attempts.length ? Math.round((attempts.filter((attempt) => attempt.correct).length / attempts.length) * 100) : 0
 export const averageLatency = (attempts: Attempt[]) => attempts.length ? Math.round(attempts.reduce((total, attempt) => total + attempt.latencyMs, 0) / attempts.length) : 0
 export type Mastery = 'UNKNOWN' | 'RECOGNIZED' | 'RECALLABLE' | 'FAST' | 'AUTOMATIC'

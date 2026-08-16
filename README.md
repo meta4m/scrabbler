@@ -19,3 +19,6 @@ Cloudflare Pages deployment is configured in [`wrangler.jsonc`](./wrangler.jsonc
 and automated by [`.github/workflows/deploy-pages.yml`](./.github/workflows/deploy-pages.yml).
 See [`docs/DEPLOYMENT.md`](./docs/DEPLOYMENT.md) for GitHub secrets, preview,
 production, and custom-domain setup.
+
+Optional Google sign-in and synchronized progress are documented in
+[`docs/AUTH_SETUP.md`](./docs/AUTH_SETUP.md).

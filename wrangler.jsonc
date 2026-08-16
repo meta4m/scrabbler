@@ -1,5 +1,17 @@
 {
-  "$schema": "node_modules/wrangler/config-schema.json",
+  "$schema": "./node_modules/wrangler/config-schema.json",
   "name": "scrabbler",
-  "pages_build_output_dir": "dist"
+  "pages_build_output_dir": "dist",
+  "compatibility_date": "2026-08-16",
+  "vars": {
+    "APP_ORIGIN": "https://scrabbler.pages.dev"
+  },
+  "d1_databases": [
+    {
+      "binding": "SCRABBLER_DB",
+      "database_name": "scrabbler-profile-db",
+      "database_id": "4738a8f6-b260-45c8-b196-3d584bad749a",
+      "migrations_dir": "migrations"
+    }
+  ]
 }

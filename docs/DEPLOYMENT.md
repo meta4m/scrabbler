@@ -63,7 +63,7 @@ npm run deploy:production
 Cloudflare's Pages dashboard provides deployment history, preview aliases, and
 the production branch. GitHub Actions logs also show the deployment URL.
 
-## Custom domain
+## Custom domain (future option)
 
 After the first production deployment, add a domain from the Pages project
 dashboard under **Custom domains**. The domain must be in the same Cloudflare
@@ -72,7 +72,6 @@ change is needed.
 
 ## Player data
 
-Attempts currently stay in the browser under `scrabbler.attempts.v1`; no player
-account or synchronized profile is enabled. Adding synchronization requires a
-chosen identity provider and server-side data store, so it remains an explicit
-follow-up rather than silently changing the privacy model of the local app.
+Anonymous attempts stay in the browser under `scrabbler.attempts.v1`. Optional
+Google sign-in and synchronized progress use a separate D1 database and are
+configured in [`AUTH_SETUP.md`](./AUTH_SETUP.md).

@@ -44,6 +44,7 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: '4.115.0'
           command: pages deploy dist --project-name scrabbler
 
       - name: Deploy pull-request preview to Cloudflare Pages
@@ -52,4 +53,5 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          wranglerVersion: '4.115.0'
           command: pages deploy dist --project-name scrabbler --branch pr-${{ github.event.pull_request.number }}

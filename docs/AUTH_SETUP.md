@@ -35,6 +35,17 @@ Scrabbler Pages project. The application uses PKCE, signed short-lived OAuth
 state, secure HttpOnly session cookies, and server-side D1 sessions. Google
 tokens are not stored in the browser or database.
 
+The initial D1 migration is already applied. If a future schema migration is
+added, apply it explicitly with a Cloudflare credential that has D1 edit access:
+
+```bash
+wrangler d1 migrations apply scrabbler-profile-db --remote
+```
+
+The GitHub Pages deployment workflow does not run database migrations
+automatically, so an application deployment cannot accidentally change the
+production schema.
+
 ## Local development
 
 Copy `.dev.vars.example` to `.dev.vars`, replace the placeholders, and run the

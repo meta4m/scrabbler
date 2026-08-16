@@ -58,7 +58,6 @@ Phase 4 milestone note: Tournament Lab now provides a timed local practice table
 - [x] GitHub Actions deployment workflow and Pages project
 - [x] Public deployment/preview URL
 - [x] Production URL
-- [ ] Optional custom domain
 - [ ] Optional synchronized player profile
 
 Phase 5 note: The static Vite build is configured for Cloudflare Pages through
@@ -69,7 +68,8 @@ repository pull-request previews. `CLOUDFLARE_ACCOUNT_ID` is set in GitHub;
 production URL is `https://scrabbler.pages.dev`; the current deployment-specific
 public URL is recorded in `docs/DEPLOYMENT.md`. Attempts remain local in the
 browser; synchronized profiles require an explicit identity and storage design
-before implementation.
+before implementation. A custom domain is intentionally deferred as a future
+hosting option.
 
 ## Phase 6: Meaning enrichment
 - [ ] Add verified one-line meanings from public/open sources

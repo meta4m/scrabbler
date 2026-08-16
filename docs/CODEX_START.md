@@ -11,7 +11,7 @@ Then inspect the existing repository before changing anything.
 
 Scrabbler is a Scrabble vocabulary/training app based initially on the user's Word Study.pdf. The goal is active recall and tournament preparation, not just dictionary lookup.
 
-Implement the MVP incrementally. Prefer a clean Vite + React + TypeScript frontend unless the existing repository strongly suggests otherwise.
+Continue the existing Vite + React + TypeScript implementation incrementally.
 
 Before coding:
 - inspect existing files
@@ -24,4 +24,7 @@ After coding:
 - run a production build
 - report what works and what remains
 
-Do not add Cloudflare deployment yet unless explicitly requested.
+Cloudflare Pages deployment is already configured. Keep production deploys on
+the GitHub Actions workflow and do not upload directly from a local session.
+The remaining deployment task is configuring the Google OAuth client secrets;
+see `docs/AUTH_SETUP.md` and `docs/CODEX_HANDOVER.md`.

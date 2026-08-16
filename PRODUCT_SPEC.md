@@ -14,7 +14,7 @@ Challenge -> timed response -> correctness -> feedback/family -> next challenge 
 5. Q/J/X/Z
 6. Dumps
 7. My Weak Words
-8. Tournament (future)
+8. Tournament Lab
 
 ## MVP UX
 Each drill should show one clear challenge, start timing automatically, accept keyboard input where appropriate, show correctness immediately, record latency, and offer the next challenge without unnecessary navigation.

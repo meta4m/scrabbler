@@ -43,18 +43,18 @@ Alphabetized signatures are useful for anagram/rack lookup. Example: TISANE -> A
 Build a functional web app with word lookup, bingo-stem drill, Q/J/X/Z drill, dump-word drill, local performance tracking, mobile-first UI, and local persistence.
 
 ## Deployment
-Cloudflare Pages is the intended eventual target. Deployment is postponed until the local app is useful.
+The app is deployed to Cloudflare Pages at `https://scrabbler.pages.dev`.
+Production deploys run through GitHub Actions using the dedicated Scrabbler
+Cloudflare account and D1 database. Anonymous practice remains local; optional
+Google profile sync is implemented but needs production OAuth client secrets.
 
 ## Next task for Codex
-1. Inspect existing repository files.
-2. Read this handoff and the other docs.
-3. Preserve useful existing work.
-4. Establish Vite + React + TypeScript if appropriate.
-5. Implement MVP incrementally.
-6. Structure the source vocabulary.
-7. Add tests for word/anagram/training logic.
-8. Run the app locally and verify mobile UI.
-9. Update documentation as decisions become concrete.
+1. Read this handoff and the other project docs before changing anything.
+2. Preserve the working training, rack, tournament, and auth-sync features.
+3. Configure Google OAuth production secrets when credentials are available.
+4. Verify sign-in, `/api/me`, and cross-device attempt synchronization.
+5. Keep tests, production builds, and the GitHub Actions deployment green.
+6. Research verified public sources before starting Phase 6 meanings.
 
 ## Do not assume
 Do not assume every PDF word is a complete authoritative Scrabble dictionary. Do not silently substitute another word list. Do not invent validity/definitions unsupported by the source unless external verification is explicitly requested.

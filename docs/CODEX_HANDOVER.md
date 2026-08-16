@@ -63,8 +63,10 @@ Security design: PKCE OAuth, signed short-lived OAuth state cookie, Secure/HttpO
 
 The durable Cloudflare API token has now been created with Pages Write scoped to
 the Scrabbler account and stored as the GitHub `CLOUDFLARE_API_TOKEN` secret.
-Commit `672da7a` was pushed and GitHub Actions run `31971925264` completed
-successfully, including tests, build, Functions type-check, and Pages publish.
+Commits `672da7a` and `d58cfe3` were pushed and GitHub Actions runs
+`31971925264` and `31972565556` completed successfully, including tests, build,
+Functions type-check, and Pages publish. The latest deployed commit is
+`d58cfe3`.
 Google OAuth client credentials are still not configured in the production
 Pages project, so end-to-end sign-in cannot be completed until those credentials
 are supplied.
@@ -147,34 +149,20 @@ gh secret set CLOUDFLARE_API_TOKEN --repo meta4m/scrabbler
 Verify only the secret name, trigger the workflow, and inspect its result.
 Never print, commit, or paste the token into chat.
 
-Uncommitted documentation changes from the prior session:
-
-- `docs/AUTH_SETUP.md`
-- `docs/DEPLOYMENT.md`
-- `docs/CODEX_HANDOVER.md`
-
 ## Recommended next actions
 
-1. Inspect `git status`, read the project docs, and review the two pending documentation files.
-2. Commit and push the pending documentation changes.
-3. Trigger the GitHub Actions deployment and verify its result:
-
-   ```bash
-   gh workflow run "Build and deploy Scrabbler" --repo meta4m/scrabbler --ref main
-   ```
-
-4. Create Google OAuth web credentials and register:
+1. Create Google OAuth web credentials and register:
 
    `https://scrabbler.pages.dev/api/auth/google/callback`
 
-5. Store Google credentials as production Pages secrets:
+2. Store Google credentials as production Pages secrets:
 
    ```bash
    wrangler pages secret put GOOGLE_CLIENT_ID --project-name scrabbler
    wrangler pages secret put GOOGLE_CLIENT_SECRET --project-name scrabbler
    ```
 
-6. Verify deployment, Google sign-in/callback, `/api/me`, and cross-browser/device attempt synchronization.
+3. Verify deployment, Google sign-in/callback, `/api/me`, and cross-browser/device attempt synchronization.
 
 ## Validation already completed
 
@@ -183,10 +171,12 @@ Uncommitted documentation changes from the prior session:
 - `npx tsc -p functions/tsconfig.json --noEmit` passed.
 - Production homepage returned HTTP 200 after deployment.
 - Production `/api/me` returned `{"user":null}` while unauthenticated.
-- Production Pages secret listing confirms `SESSION_SECRET`; Google OAuth secrets
-  are not yet configured.
-- GitHub Actions run `31971925264` passed all deployment steps for commit
-  `672da7a`.
+- Production Pages secret listing confirms only `SESSION_SECRET`; Google OAuth
+  secrets are not yet configured.
+- Production `/api/auth/google` returns HTTP 400 with “Google sign-in is not
+  configured yet.”
+- GitHub Actions runs `31971925264` and `31972565556` passed all deployment
+  steps; the latest is for commit `d58cfe3`.
 - Wrangler Pages dev compiled Functions and recognized the D1 binding.
 - A local Wrangler startup also encountered `uv_interface_addresses returned Unknown system error 1`; this appeared to be an environment/network-interface issue.
 

@@ -50,8 +50,24 @@ Phase 3 note: Rack Lab now exposes source-valid rack plays, standard scores, lea
 - [x] Play selection
 - [x] Challenge decisions
 - [x] Post-game analysis
+- [x] Full board placement legality and cross-word validation
+- [x] Premium squares, bingo bonuses, and blank-tile scoring
+- [x] Opponent turns, tile-bag refills, passes, and exchanges
+- [x] Rack-out and end-game score adjustments
 
-Phase 4 milestone note: Tournament Lab now provides a timed local practice table with a generated board anchor, tile-bag rack, PDF/rack-valid play checking, tile scoring, challenge-decision logging, and a post-game turn summary. Full board-legality search, premium squares, opponent turns, and complete scoring rules remain a deeper simulation pass.
+Phase 4 milestone note: Tournament Lab now provides a timed local practice table with center-opening rules, connected placements, cross-word validation, standard premium squares, blank tiles, bingo bonuses, a real tile bag, automated opponent turns, pass/exchange actions, end-game adjustments, challenge-decision logging, and post-game analysis.
+
+### Phase 4 follow-up: Tournament usability and rules hardening
+- [x] Fit the board, rack, timer, and turn controls into iPad/laptop desktop viewports
+- [x] Add configurable 10-, 25-, and 50-minute tournament clocks
+- [x] Keep the pre-start rack empty until a game is started
+- [x] Separate human/opponent tile palettes while preserving standard premium colors
+- [x] Correct double/triple-letter scoring and add multi-word scoring coverage
+- [x] Add a dictionary-source selector scaffold for the focused PDF source and full CSW24
+- [ ] Import and enable the supplied complete CSW24 dictionary
+- [ ] Tune the compact mobile tournament layout after desktop/iPad sign-off
+
+Phase 4 follow-up note: A move that creates a main word plus cross-words scores each formed word separately. A newly placed connecting tile therefore contributes once to each word it belongs to; existing tiles and their premiums are not reactivated.
 
 ## Phase 5: Deployment
 - [x] Cloudflare Pages configuration and deployment runbook
@@ -75,3 +91,10 @@ intentionally deferred as a future hosting option.
 
 ## Phase 6: Meaning enrichment
 - [ ] Add verified one-line meanings from public/open sources
+
+## Phase 7: Network play and broadcast
+- [ ] Multiplayer rooms for up to four remote/LAN players
+- [ ] Authoritative shared game state and reconnection handling
+- [ ] Fixed spectator/broadcast view without pointer or UI-motion noise
+- [ ] Admin-controlled stream start, live status, and shutdown
+- [ ] TV casting and browser-based live-view delivery

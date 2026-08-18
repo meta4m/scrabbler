@@ -1,22 +1,23 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
-import { bingoFamilies, categoryLabels, normalize, scoreWord, type DrillType, uniqueSourceWords, words, wordsForDrill, wordsFromRack } from './data/words'
+import { useEffect, useMemo, useRef, useState, type DragEvent as ReactDragEvent } from 'react'
+import { bingoFamilies, categoryLabels, dictionarySourceOptions, normalize, scoreWord, type DictionarySourceId, type DrillType, uniqueSourceWords, words, wordsForDrill, wordsFromRack } from './data/words'
 import { accuracy, averageLatency, drillLabel, dueWords, loadAttempts, mergeAttempts, saveAttempt, selectAdaptiveWord, weakWords, wordStats, type Attempt } from './lib/training'
 import { loadProfile, loadRemoteAttempts, syncRemoteAttempts, type ProfileUser } from './lib/auth'
 import { anagramsFor, bingoFamilyFor, dumpPlaysFor, extensionsFor, hooksFor, rackPlays, randomRack } from './lib/scrabble'
-import { categoryForPlay, createTournamentPosition, isLegalSourcePlay, scoreMove, type TournamentPosition } from './lib/tournament'
+import { categoryForPlay, createTournamentGame, exchangeTiles, passTurn, playGameMove, playOpponentTurn, premiumAt, TOURNAMENT_TIME_OPTIONS, validatePlacement, type Direction, type MoveResult, type TournamentDuration, type TournamentGame, type TurnRecord } from './lib/tournament'
 
 type View = 'home' | 'lookup' | 'drill' | 'progress' | 'rack' | 'tournament'
-const drillCards: { id: DrillType; title: string; description: string; color: string }[] = [
-  { id: '2-letter', title: '2-letter sprint', description: 'Build the tiny words that unlock the board.', color: 'teal' },
-  { id: 'power', title: 'Power letters', description: 'Rapid recall for J, Q, X and Z words.', color: 'orange' },
-  { id: 'all', title: 'All-letter sprint', description: 'Train the full source from short words to bingos.', color: 'green' },
-  { id: 'mixed', title: 'Adaptive mix', description: 'Let your weak and slow words choose the next prompt.', color: 'navy' },
-  { id: 'bingo', title: 'Bingo families', description: 'See a stem. Find the 7-letter plays.', color: 'plum' },
-  { id: 'dumps', title: 'Dump words', description: 'Turn awkward I, U and vowel racks into options.', color: 'blue' },
+type IconName = 'search' | 'bolt' | 'chart' | 'arrow' | 'clock' | 'check' | 'x' | 'play' | 'grid' | 'pair' | 'stack' | 'shuffle' | 'spark' | 'tray'
+const drillCards: { id: DrillType; title: string; description: string; color: string; icon: IconName }[] = [
+  { id: '2-letter', title: '2-letter sprint', description: 'Build the tiny words that unlock the board.', color: 'teal', icon: 'pair' },
+  { id: 'power', title: 'Power letters', description: 'Rapid recall for J, Q, X and Z words.', color: 'orange', icon: 'bolt' },
+  { id: 'all', title: 'All-letter sprint', description: 'Train the full source from short words to bingos.', color: 'green', icon: 'stack' },
+  { id: 'mixed', title: 'Adaptive mix', description: 'Let your weak and slow words choose the next prompt.', color: 'navy', icon: 'shuffle' },
+  { id: 'bingo', title: 'Bingo families', description: 'See a stem. Find the 7-letter plays.', color: 'plum', icon: 'spark' },
+  { id: 'dumps', title: 'Dump words', description: 'Turn awkward I, U and vowel racks into options.', color: 'blue', icon: 'tray' },
 ]
 
-const Icon = ({ name }: { name: 'search' | 'bolt' | 'chart' | 'arrow' | 'clock' | 'check' | 'x' }) => {
-  const paths = { search: 'M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm6-2 4 4', bolt: 'm13 2-9 12h7l-1 8 9-12h-7l1-8Z', chart: 'M4 19V5m0 14h17M8 16v-4m4 4V8m4 8V4', arrow: 'M5 12h14m-6-6 6 6-6 6', clock: 'M12 7v5l3 2m7-2a10 10 0 1 1-20 0 10 10 0 0 1 20 0', check: 'm5 12 4 4L19 6', x: 'm6 6 12 12M18 6 6 18' } as const
+const Icon = ({ name }: { name: IconName }) => {
+  const paths: Record<IconName, string> = { search: 'M11 19a8 8 0 1 0 0-16 8 8 0 0 0 0 16Zm6-2 4 4', bolt: 'm13 2-9 12h7l-1 8 9-12h-7l1-8Z', chart: 'M4 19V5m0 14h17M8 16v-4m4 4V8m4 8V4', arrow: 'M5 12h14m-6-6 6 6-6 6', clock: 'M12 7v5l3 2m7-2a10 10 0 1 1-20 0 10 10 0 0 1 20 0', check: 'm5 12 4 4L19 6', x: 'm6 6 12 12M18 6 6 18', play: 'M8 5v14l11-7L8 5Z', grid: 'M4 4h6v6H4zM14 4h6v6h-6zM4 14h6v6H4zM14 14h6v6h-6z', pair: 'M5 6h5v12H5zM14 6h5v12h-5z', stack: 'M4 7 12 3l8 4-8 4L4 7Zm0 5 8 4 8-4M4 17l8 4 8-4', shuffle: 'M4 7h4l8 10h4m0 0-3-3m3 3-3 3M4 17h4L16 7h4m0 0-3-3m3 3-3 3', spark: 'M12 2l1.8 6.2L20 10l-6.2 1.8L12 18l-1.8-6.2L4 10l6.2-1.8L12 2Z', tray: 'M4 5h16l-2 12H6L4 5Zm0 0 4 6h8l4-6' }
   return <svg aria-hidden="true" viewBox="0 0 24 24" className="icon"><path d={paths[name]} /></svg>
 }
 
@@ -69,12 +70,12 @@ function App() {
       <button className="brand" onClick={() => setView('home')} aria-label="Go to Scrabbler home"><span className="brand-mark">S</span><span>scrabbler<span className="brand-dot">.</span></span></button>
       <nav className="desktop-nav" aria-label="Primary navigation">
         <NavButton active={view === 'lookup'} onClick={() => setView('lookup')} icon="search">Lookup</NavButton>
-        <NavButton active={view === 'drill'} onClick={() => { setActiveDrill(null); setView('drill') }} icon="bolt">Quick drill</NavButton>
+        <NavButton active={view === 'drill'} onClick={() => { setActiveDrill(null); setView('drill') }} icon="play">Quick drill</NavButton>
         <NavButton active={view === 'progress'} onClick={() => setView('progress')} icon="chart">My progress</NavButton>
-        <NavButton active={view === 'rack'} onClick={() => setView('rack')} icon="chart">Rack lab</NavButton>
+        <NavButton active={view === 'rack'} onClick={() => setView('rack')} icon="grid">Rack lab</NavButton>
         <NavButton active={view === 'tournament'} onClick={() => setView('tournament')} icon="clock">Tournament</NavButton>
       </nav>
-      <div className="source-badge"><span className="live-dot" /> CSW24 study source</div><AuthControls user={user} syncState={syncState} />
+      <a className="source-badge" href="/source-words.pdf" download="Word Study.pdf" target="_blank" rel="noreferrer"><span className="live-dot" /> CSW24 study source <span className="source-download">PDF ↗</span></a><AuthControls user={user} syncState={syncState} />
     </header>
     <main>
       {view === 'home' && <Home onLookup={() => setView('lookup')} onDrill={beginDrill} attempts={attempts} />}
@@ -88,7 +89,7 @@ function App() {
   </div>
 }
 
-function NavButton({ active, onClick, icon, children }: { active: boolean; onClick: () => void; icon: 'search' | 'bolt' | 'chart' | 'clock'; children: string }) { return <button className={`nav-button ${active ? 'active' : ''}`} onClick={onClick}><Icon name={icon} />{children}</button> }
+function NavButton({ active, onClick, icon, children }: { active: boolean; onClick: () => void; icon: IconName; children: string }) { return <button className={`nav-button ${active ? 'active' : ''}`} onClick={onClick}><Icon name={icon} />{children}</button> }
 
 function AuthControls({ user, syncState }: { user: ProfileUser | null; syncState: 'local' | 'loading' | 'synced' | 'syncing' | 'error' }) {
   if (syncState === 'loading') return <span className="auth-status">Checking profile…</span>
@@ -100,7 +101,7 @@ function Home({ onLookup, onDrill, attempts }: { onLookup: () => void; onDrill: 
   return <div className="home-page">
     <section className="hero"><div className="eyebrow"><span className="eyebrow-line" /> YOUR DAILY WORD WORKOUT</div><h1>Make your<br /><em>best play</em> automatic.</h1><p className="hero-copy">A focused training loop for rapid lexical recall, bingo retrieval and the words that win close games.</p><div className="hero-actions"><button className="button primary" onClick={() => onDrill('2-letter')}>Start a quick drill <Icon name="arrow" /></button><button className="button secondary" onClick={onLookup}><Icon name="search" /> Explore words</button></div><div className="hero-note"><Icon name="clock" /> 5 minutes a day compounds quickly</div></section>
     <section className="stats-strip"><Stat value={String(words.length)} label="source words" /><Stat value={String(bingoFamilies[0]?.answers.length ?? 0)} label="bingo plays" /><Stat value={attempts.length ? `${accuracy(attempts)}%` : '—'} label="your accuracy" /></section>
-    <section className="section-block"><div className="section-heading"><div><div className="eyebrow">CHOOSE YOUR FOCUS</div><h2>Pick a training lane</h2></div><button className="text-button" onClick={() => onDrill('2-letter')}>Open quick drill <Icon name="arrow" /></button></div><div className="drill-grid">{drillCards.map((card, index) => <button key={card.id} className={`drill-card ${card.color}`} onClick={() => onDrill(card.id)}><span className="card-number">0{index + 1}</span><span className="card-icon"><Icon name={card.id === 'bingo' ? 'chart' : card.id === 'dumps' ? 'search' : 'bolt'} /></span><strong>{card.title}</strong><span>{card.description}</span><span className="card-arrow"><Icon name="arrow" /></span></button>)}</div></section>
+    <section className="section-block"><div className="section-heading"><div><div className="eyebrow">CHOOSE YOUR FOCUS</div><h2>Pick a training lane</h2></div><button className="text-button" onClick={() => onDrill('2-letter')}>Open quick drill <Icon name="arrow" /></button></div><div className="drill-grid">{drillCards.map((card, index) => <button key={card.id} className={`drill-card ${card.color}`} onClick={() => onDrill(card.id)}><span className="card-number">0{index + 1}</span><span className="card-icon"><Icon name={card.icon} /></span><strong>{card.title}</strong><span>{card.description}</span><span className="card-arrow"><Icon name="arrow" /></span></button>)}</div></section>
     <section className="quote-panel"><div className="quote-mark">“</div><p>Recognition is a skill. Train the moment before you need it.</p><span>— The Scrabbler principle</span></section>
   </div>
 }
@@ -115,7 +116,7 @@ function PageIntro({ eyebrow, title, copy, onBack }: { eyebrow: string; title: s
 
 function Drills({ active, attempts, onSelect, onRecord, onBack }: { active: DrillType | null; attempts: Attempt[]; onSelect: (drill: DrillType) => void; onRecord: (attempt: Attempt) => void; onBack: () => void }) {
   const [mode, setMode] = useState<'sequence' | 'random'>('sequence'); const [allMode, setAllMode] = useState<'random' | 'progressive'>('random')
-  if (!active) return <div className="content-page drill-picker"><PageIntro eyebrow="ACTIVE RECALL" title="Choose your training lane." copy="Pick a challenge when you are ready. Nothing starts until you choose." onBack={onBack} /><div className="drill-picker-grid">{drillCards.map((card) => <button key={card.id} className={`drill-card ${card.color}`} onClick={() => onSelect(card.id)}><span className="card-number">{card.id === 'all' ? '★' : 'START'}</span><span className="card-icon"><Icon name={card.id === 'bingo' ? 'chart' : card.id === 'dumps' ? 'search' : 'bolt'} /></span><strong>{card.title}</strong><span>{card.description}</span><span className="card-arrow"><Icon name="arrow" /></span></button>)}</div></div>
+  if (!active) return <div className="content-page drill-picker"><PageIntro eyebrow="ACTIVE RECALL" title="Choose your training lane." copy="Pick a challenge when you are ready. Nothing starts until you choose." onBack={onBack} /><div className="drill-picker-grid">{drillCards.map((card) => <button key={card.id} className={`drill-card ${card.color}`} onClick={() => onSelect(card.id)}><span className="card-number">{card.id === 'all' ? '★' : 'START'}</span><span className="card-icon"><Icon name={card.icon} /></span><strong>{card.title}</strong><span>{card.description}</span><span className="card-arrow"><Icon name="arrow" /></span></button>)}</div></div>
   const title = active === 'bingo' ? 'Build the whole rack.' : active === 'all' ? 'Train every length.' : active === 'mixed' ? 'Practice what needs you.' : 'One prompt. One answer.'
   const copy = active === 'bingo' ? 'You have two minutes. Find every source-valid word you can from seven rack tiles and one board tile.' : active === 'all' ? 'Choose random recall or progressive recall: two correct words in a row moves you toward longer words.' : active === 'mixed' ? 'Adaptive practice prioritizes words that are weak, slow, or due for review.' : 'Memorize the flash, then race the clock. Answer quickly, then learn from the family.'
   const isAll = active === 'all'; const isMixed = active === 'mixed'
@@ -154,15 +155,155 @@ function RackLab({ onBack }: { onBack: () => void }) {
 
 function IntelBlock({ title, values }: { title: string; values: string[] }) { return <div className="intel-block"><span>{title}</span>{values.length ? <div className="word-chips">{values.map((value) => <b key={value}>{value}</b>)}</div> : <small>None in the imported source.</small>}</div> }
 
-type TournamentTurn = { word: string; score: number; seconds: number; decision: 'played' | 'challenged' }
+type TournamentTurn = TurnRecord & { seconds: number; decision?: 'played' | 'challenged' }
+type DraftTile = { rackIndex: number; letter: string; row: number; column: number; isBlank: boolean }
+type DragItem = { kind: 'rack' | 'draft'; rackIndex: number }
+
 function TournamentLab({ onBack }: { onBack: () => void }) {
-  const [position, setPosition] = useState<TournamentPosition>(() => createTournamentPosition()); const [remaining, setRemaining] = useState(600); const [running, setRunning] = useState(false); const [finished, setFinished] = useState(false); const [answer, setAnswer] = useState(''); const [result, setResult] = useState<{ word: string; legal: boolean; score: number } | null>(null); const [history, setHistory] = useState<TournamentTurn[]>([]); const [decisionMessage, setDecisionMessage] = useState(''); const turnStarted = useRef(Date.now()); const inputRef = useRef<HTMLInputElement>(null)
-  useEffect(() => { if (!running) return; const timer = window.setInterval(() => setRemaining((value) => { if (value <= 1) { window.clearInterval(timer); setRunning(false); setFinished(true); return 0 } return value - 1 }), 1000); return () => window.clearInterval(timer) }, [running])
-  const start = () => { setPosition(createTournamentPosition()); setRemaining(600); setHistory([]); setAnswer(''); setResult(null); setDecisionMessage(''); setFinished(false); setRunning(true); turnStarted.current = Date.now(); window.requestAnimationFrame(() => inputRef.current?.focus()) }
-  const submit = () => { if (!running || !answer.trim()) return; const word = normalize(answer); setResult({ word, legal: isLegalSourcePlay(word, position.rack), score: scoreMove(word, position.rack) }); setDecisionMessage('') }
-  const finishTurn = (decision: TournamentTurn['decision']) => { if (!result) return; if (result.legal) setHistory((items) => [...items, { word: result.word, score: result.score, seconds: Math.max(1, Math.round((Date.now() - turnStarted.current) / 1000)), decision }]); setDecisionMessage(decision === 'challenged' ? 'Challenge decision recorded for review.' : 'Play recorded. New position ready.'); setPosition(createTournamentPosition()); setResult(null); setAnswer(''); turnStarted.current = Date.now(); window.requestAnimationFrame(() => inputRef.current?.focus()) }
-  return <div className="content-page tournament-lab"><PageIntro eyebrow="TOURNAMENT LAB" title="Make the move under pressure." copy="A local practice table with a ten-minute game clock, realistic tile-bag racks, a board anchor, source-valid play checking, scoring, and challenge decisions." onBack={onBack} /><div className="tournament-topline"><span className="session-label"><span className="live-dot" /> {running ? 'game in progress' : finished ? 'game complete' : 'ready to start'}</span><span className="game-clock"><Icon name="clock" /> {Math.floor(remaining / 60)}:{String(remaining % 60).padStart(2, '0')}</span><button className="button primary" onClick={start}>{running ? 'Restart game' : finished ? 'New game' : 'Start 10-minute game'} <Icon name="bolt" /></button></div><div className="tournament-grid"><section className="board-card"><div className="lab-heading"><div><div className="eyebrow">BOARD POSITION</div><h2>Anchor: {position.anchor}</h2></div><span>15 × 15 board</span></div><div className="scrabble-board" aria-label="15 by 15 Scrabble board">{position.board.flatMap((row, rowIndex) => row.map((cell, columnIndex) => <span className={`board-cell ${cell ? 'occupied' : ''}`} key={`${rowIndex}-${columnIndex}`}>{cell}</span>))}</div><div className="rack-tiles tournament-rack" aria-label={`Your rack ${position.rack}`}>{[...position.rack].map((letter, index) => <b className="rack-tile" key={`${letter}-${index}`}>{letter}</b>)}</div></section><section className="turn-card"><div className="eyebrow">YOUR TURN</div><h2>Find a play.</h2><p className="lab-copy">Enter a PDF-valid word buildable from your rack. This first simulator milestone scores the play’s tiles and records the decision; board legality will deepen in the next tournament pass.</p><div className="bingo-controls"><input ref={inputRef} value={answer} onChange={(event) => setAnswer(event.target.value)} onKeyDown={(event) => event.key === 'Enter' && submit()} placeholder={running ? 'TYPE A PLAY…' : 'Start the game first'} aria-label="Tournament play" autoCapitalize="characters" autoCorrect="off" spellCheck={false} inputMode="text" disabled={!running || !!result} /><button className="button primary" onClick={submit} disabled={!running || !!result}>Check play <Icon name="check" /></button></div>{result && <div className={`turn-result ${result.legal ? 'legal' : 'illegal'}`}><span className="card-result-icon"><Icon name={result.legal ? 'check' : 'x'} /></span><div><strong>{result.legal ? `${result.word} · ${result.score} points` : `${result.word} is not playable`}</strong><small>{result.legal ? `${categoryForPlay(result.word)?.sourceSection ?? 'PDF source'} · choose a decision` : 'It is either absent from the PDF or cannot be built from this rack.'}</small></div></div>}{result?.legal && <div className="decision-row"><button className="button secondary" onClick={() => finishTurn('played')}>Play it</button><button className="button secondary" onClick={() => finishTurn('challenged')}>Challenge decision</button></div>}{decisionMessage && <div className="decision-message"><Icon name="check" /> {decisionMessage}</div>}</section></div><section className="post-game"><div className="section-heading compact"><div><div className="eyebrow">POST-GAME ANALYSIS</div><h2>{history.reduce((total, turn) => total + turn.score, 0)} points · {history.length} turns</h2></div><span>{history.length ? `${Math.round(history.reduce((total, turn) => total + turn.seconds, 0) / history.length)}s average turn` : 'No turns recorded yet'}</span></div>{history.length ? <div className="attempt-list">{history.map((turn, index) => <div className="attempt-row" key={`${turn.word}-${index}`}><span className="attempt-mark yes"><Icon name="check" /></span><strong>{turn.word}</strong><span>{turn.score} points</span><small>{turn.seconds}s · {turn.decision}</small></div>)}</div> : <div className="empty-state">Start a game and record plays to see the post-game breakdown.</div>}</section></div>
+  const [dictionarySource, setDictionarySource] = useState<DictionarySourceId>('focused'); const [durationMinutes, setDurationMinutes] = useState<TournamentDuration>(10); const [game, setGame] = useState<TournamentGame>(() => createTournamentGame(undefined, 'focused')); const [remaining, setRemaining] = useState(600); const [running, setRunning] = useState(false); const [draftTiles, setDraftTiles] = useState<DraftTile[]>([]); const [blankAssignments, setBlankAssignments] = useState<Record<number, string>>({}); const [activeRackIndex, setActiveRackIndex] = useState<number | null>(null); const [draggedItem, setDraggedItem] = useState<DragItem | null>(null); const [result, setResult] = useState<MoveResult | null>(null); const [history, setHistory] = useState<TournamentTurn[]>([]); const [decisionMessage, setDecisionMessage] = useState(''); const [selectedRack, setSelectedRack] = useState<number[]>([]); const turnStarted = useRef(Date.now())
+  const finished = game.finished || remaining === 0; const locked = Boolean(result?.legal); const draftAt = (row: number, column: number) => draftTiles.find((tile) => tile.row === row && tile.column === column); const draftRack = draftTiles.map((tile) => game.racks.human[tile.rackIndex] ?? '').join('')
+  const draftInference = useMemo(() => {
+    type DraftPlacement = { word: string; row: number; column: number; direction: Direction }
+    const buildPlacement = (direction: Direction): DraftPlacement | null => {
+      if ((direction === 'horizontal' && new Set(draftTiles.map((tile) => tile.row)).size !== 1) || (direction === 'vertical' && new Set(draftTiles.map((tile) => tile.column)).size !== 1)) return null
+      const inside = (row: number, column: number) => row >= 0 && row < game.board.length && column >= 0 && column < game.board.length
+      const step = direction === 'horizontal' ? { row: 0, column: 1 } : { row: 1, column: 0 }; let row = Math.min(...draftTiles.map((tile) => tile.row)); let column = Math.min(...draftTiles.map((tile) => tile.column))
+      while (inside(row - step.row, column - step.column) && game.board[row - step.row][column - step.column]) { row -= step.row; column -= step.column }
+      const startRow = row; const startColumn = column; let lineEndRow = Math.max(...draftTiles.map((tile) => tile.row)); let lineEndColumn = Math.max(...draftTiles.map((tile) => tile.column))
+      while (inside(lineEndRow + step.row, lineEndColumn + step.column) && game.board[lineEndRow + step.row][lineEndColumn + step.column]) { lineEndRow += step.row; lineEndColumn += step.column }
+      const length = direction === 'horizontal' ? lineEndColumn - startColumn + 1 : lineEndRow - startRow + 1; const letters: string[] = []
+      for (let index = 0; index < length; index += 1) { const tileRow = startRow + step.row * index; const tileColumn = startColumn + step.column * index; const tile = draftAt(tileRow, tileColumn); const boardTile = game.board[tileRow]?.[tileColumn]; if (!tile && !boardTile) return null; letters.push(tile?.letter || boardTile?.letter || '') }
+      return { word: letters.join(''), row: startRow, column: startColumn, direction }
+    }
+    if (!draftTiles.length) return { placement: null as DraftPlacement | null, status: 'Drag tiles from the rack onto the board.' }
+    if (draftTiles.some((tile) => tile.isBlank && !tile.letter)) return { placement: null as DraftPlacement | null, status: 'Assign any blank tile to infer the play.' }
+    const rows = new Set(draftTiles.map((tile) => tile.row)); const columns = new Set(draftTiles.map((tile) => tile.column))
+    if (draftTiles.length > 1 && rows.size !== 1 && columns.size !== 1) return { placement: null as DraftPlacement | null, status: 'Place new tiles in one row or one column.' }
+    const directions: Direction[] = draftTiles.length === 1 ? ['horizontal', 'vertical'] : rows.size === 1 ? ['horizontal'] : ['vertical']
+    const candidates = directions.map(buildPlacement).filter((placement): placement is DraftPlacement => placement !== null && placement.word.length > 1)
+    if (draftTiles.length === 1) {
+      const legalCandidates = candidates.filter((placement) => validatePlacement(game.board, draftRack, placement, game.dictionarySource).legal)
+      if (legalCandidates.length === 1) return { placement: legalCandidates[0], status: '' }
+      if (legalCandidates.length > 1 || candidates.length > 1) return { placement: null as DraftPlacement | null, status: 'This tile can play both across and down. Place another tile to show the intended line.' }
+      if (!candidates.length) return { placement: null as DraftPlacement | null, status: 'Place another tile in the same row or column to show the play direction.' }
+    }
+    const placement = candidates[0] ?? null
+    return { placement, status: placement ? '' : 'Keep tiles in one line and fill every gap.' }
+  }, [draftRack, draftTiles, game.board, game.dictionarySource])
+  const draftPlacement = draftInference.placement
+  const directionLabel = draftPlacement?.direction === 'horizontal' ? 'across' : draftPlacement?.direction === 'vertical' ? 'down' : ''
+  const draftStatus = draftInference.status || `${draftPlacement?.word} · ${directionLabel} · ${draftTiles.length} new tile${draftTiles.length === 1 ? '' : 's'} ready to check.`
+  useEffect(() => { if (!running || finished) return; const timer = window.setInterval(() => setRemaining((value) => { if (value <= 1) { window.clearInterval(timer); setRunning(false); return 0 } return value - 1 }), 1000); return () => window.clearInterval(timer) }, [finished, running])
+  const clearDraftCheck = () => { setResult(null); setDecisionMessage('') }
+  const resetDraft = () => { setDraftTiles([]); setBlankAssignments({}); setActiveRackIndex(null); setDraggedItem(null); clearDraftCheck() }
+  const start = () => { setGame(createTournamentGame(undefined, dictionarySource)); setRemaining(durationMinutes * 60); setHistory([]); resetDraft(); setSelectedRack([]); setRunning(true); turnStarted.current = Date.now() }
+  const appendHistory = (turn: TurnRecord, seconds = Math.max(1, Math.round((Date.now() - turnStarted.current) / 1000)), decision?: TournamentTurn['decision']) => setHistory((items) => [...items, { ...turn, seconds, decision }])
+  const resolveOpponent = (nextGame: TournamentGame) => { if (nextGame.finished || nextGame.currentPlayer !== 'opponent') return nextGame; const opponent = playOpponentTurn(nextGame); appendHistory(opponent.game.history[opponent.game.history.length - 1], 1); return opponent.game }
+  const startDrag = (item: DragItem, event: ReactDragEvent<HTMLElement>) => { event.dataTransfer.effectAllowed = 'move'; event.dataTransfer.setData('text/plain', String(item.rackIndex)); setDraggedItem(item) }
+  const dropOnBoard = (row: number, column: number) => {
+    if (!running || game.currentPlayer !== 'human' || locked || game.board[row][column] || draftAt(row, column)) return
+    const item = draggedItem ?? (activeRackIndex === null ? null : { kind: 'rack' as const, rackIndex: activeRackIndex }); if (!item) return
+    if (item.kind === 'rack') { if (draftTiles.some((tile) => tile.rackIndex === item.rackIndex)) return; const rackLetter = game.racks.human[item.rackIndex]; setDraftTiles((tiles) => [...tiles, { rackIndex: item.rackIndex, letter: rackLetter === '?' ? blankAssignments[item.rackIndex] ?? '' : rackLetter, row, column, isBlank: rackLetter === '?' }]) }
+    else setDraftTiles((tiles) => tiles.map((tile) => tile.rackIndex === item.rackIndex ? { ...tile, row, column } : tile))
+    setActiveRackIndex(null); setDraggedItem(null); clearDraftCheck()
+  }
+  const dropOnRack = () => { if (!draggedItem || draggedItem.kind !== 'draft' || locked) return; setDraftTiles((tiles) => tiles.filter((tile) => tile.rackIndex !== draggedItem.rackIndex)); setDraggedItem(null); clearDraftCheck() }
+  const removeDraft = (rackIndex: number) => { if (locked) return; setDraftTiles((tiles) => tiles.filter((tile) => tile.rackIndex !== rackIndex)); clearDraftCheck() }
+  const assignBlank = (rackIndex: number, value: string) => { const letter = value.toUpperCase().replace(/[^A-Z]/g, '').slice(0, 1); setBlankAssignments((items) => ({ ...items, [rackIndex]: letter })); setDraftTiles((tiles) => tiles.map((tile) => tile.rackIndex === rackIndex ? { ...tile, letter } : tile)); clearDraftCheck() }
+  const checkPlacement = () => { if (!running || !draftPlacement || !draftTiles.length) return; setResult(validatePlacement(game.board, draftRack, draftPlacement)); setDecisionMessage('') }
+  const finishTurn = (decision: NonNullable<TournamentTurn['decision']>) => { if (!result?.legal) return; const outcome = playGameMove(game, result.placement, 'human'); if (!outcome.move.legal) { setResult(outcome.move); return } appendHistory(outcome.game.history[outcome.game.history.length - 1], undefined, decision); const nextGame = resolveOpponent(outcome.game); const latestTurn = nextGame.history[nextGame.history.length - 1]; setGame(nextGame); resetDraft(); setSelectedRack([]); setDecisionMessage(nextGame.finished ? 'Game complete.' : latestTurn?.player === 'opponent' ? `Opponent ${latestTurn.type === 'play' ? `played ${latestTurn.word} for ${latestTurn.score} points.` : 'passed.'}` : 'Play recorded.'); turnStarted.current = Date.now(); setRunning(!nextGame.finished) }
+  const pass = () => { if (!running || game.finished) return; const next = passTurn(game); appendHistory(next.history[next.history.length - 1]); const resolved = resolveOpponent(next); setGame(resolved); resetDraft(); setSelectedRack([]); setRunning(!resolved.finished); setDecisionMessage(resolved.finished ? 'Six consecutive passes ended the game.' : 'Pass recorded.'); turnStarted.current = Date.now() }
+  const exchange = () => { if (!running || game.finished || !selectedRack.length) return; const letters = selectedRack.map((index) => game.racks.human[index]).join(''); const exchanged = exchangeTiles(game, letters); if (!exchanged.ok) { setDecisionMessage(exchanged.reason ?? 'Exchange unavailable.'); return } appendHistory(exchanged.game.history[exchanged.game.history.length - 1]); const resolved = resolveOpponent(exchanged.game); setGame(resolved); resetDraft(); setSelectedRack([]); setRunning(!resolved.finished); setDecisionMessage('Tiles exchanged.'); turnStarted.current = Date.now() }
+  const toggleExchangeTile = (index: number) => setSelectedRack((items) => items.includes(index) ? items.filter((item) => item !== index) : [...items, index])
+  const totalScore = game.scores.human
+  const visibleRack = running || finished ? game.racks.human : ''
+  const fullDictionaryAvailable = dictionarySourceOptions.find((option) => option.id === 'full')?.available ?? false
+  return (
+    <div className="content-page tournament-lab">
+      <div className="tournament-heading">
+        <button className="back-button" onClick={onBack}>← Back</button>
+        <div className="tournament-heading-copy">
+          <div className="eyebrow">TOURNAMENT LAB</div>
+          <h1>Make the move under pressure.</h1>
+          <p>Drag tiles onto the board, use the premiums, and keep the whole turn visible while the clock runs.</p>
+        </div>
+        <div className="tournament-heading-note"><span className="live-dot" /> Desktop board workspace</div>
+      </div>
+
+      <div className="tournament-topline">
+        <span className="session-label"><span className="live-dot" /> {running ? game.currentPlayer === 'human' ? 'your turn' : 'opponent turn' : finished ? 'game complete' : 'ready to start'}</span>
+        <span className="game-clock"><Icon name="clock" /> {Math.floor((running || finished ? remaining : durationMinutes * 60) / 60)}:{String((running || finished ? remaining : durationMinutes * 60) % 60).padStart(2, '0')}</span>
+        <span className="bag-count">{running || finished ? `${game.bag.length} tiles in bag` : 'Rack drawn on start'}</span>
+        <label className="tournament-setting">
+          <span>Dictionary</span>
+          <select value={dictionarySource} onChange={(event) => setDictionarySource(event.target.value as DictionarySourceId)} disabled={running} aria-label="Tournament dictionary">
+            <option value="focused">Focused PDF source</option>
+            <option value="full" disabled={!fullDictionaryAvailable}>Full CSW24{fullDictionaryAvailable ? '' : ' (awaiting import)'}</option>
+          </select>
+        </label>
+        <label className="tournament-setting">
+          <span>Timer</span>
+          <select value={durationMinutes} onChange={(event) => { const next = Number(event.target.value) as TournamentDuration; setDurationMinutes(next); if (!running) setRemaining(next * 60) }} disabled={running} aria-label="Tournament timer">
+            {TOURNAMENT_TIME_OPTIONS.map((minutes) => <option key={minutes} value={minutes}>{minutes} min</option>)}
+          </select>
+        </label>
+        <button className="button primary" onClick={start}>{running ? 'Restart game' : finished ? 'New game' : `Start ${durationMinutes}-minute game`} <Icon name="bolt" /></button>
+      </div>
+
+      <div className="tournament-grid">
+        <section className="board-card">
+          <div className="lab-heading">
+            <h2>{boardHasTilesForUi(game) ? 'Live board' : 'Opening move'}</h2>
+            <div className="premium-legend"><span><i className="legend-you" /> You</span><span><i className="legend-opponent" /> Opponent</span></div>
+          </div>
+          <p className="board-instruction">{running ? 'Drag rack tiles into a row or column. The play direction is inferred automatically; fill every gap. Drag a draft tile back to the rack to remove it.' : 'The board is ready. Choose your dictionary and clock, then start when you are ready.'}</p>
+          <div className="scrabble-board" aria-label="Scrabble board">
+            {game.board.flatMap((row, rowIndex) => row.map((tile, columnIndex) => {
+              const draft = draftAt(rowIndex, columnIndex)
+              const premium = premiumAt(rowIndex, columnIndex)
+              const occupied = Boolean(tile)
+              const label = draft
+                ? `${draft.isBlank ? draft.letter ? `blank ${draft.letter}` : 'blank tile' : draft.letter}, row ${rowIndex + 1}, column ${columnIndex + 1}`
+                : tile
+                  ? `${tile.letter}, row ${rowIndex + 1}, column ${columnIndex + 1}`
+                  : `${premium ? premium.replace('-', ' ') : 'open square'}, row ${rowIndex + 1}, column ${columnIndex + 1}`
+              return <button type="button" className={`board-cell ${premium ? `premium ${premium}` : ''} ${occupied ? 'occupied' : ''} ${draft ? 'draft-tile' : ''} ${tile?.player === 'opponent' ? 'opponent-tile' : ''}`} key={`${rowIndex}-${columnIndex}`} title={premium ? premium.replace('-', ' ') : undefined} aria-label={label} draggable={Boolean(draft) && !locked} disabled={(!draft && occupied) || !running || game.currentPlayer !== 'human' || locked} onClick={() => draft ? removeDraft(draft.rackIndex) : dropOnBoard(rowIndex, columnIndex)} onDragStart={(event) => draft && startDrag({ kind: 'draft', rackIndex: draft.rackIndex }, event)} onDragEnd={() => setDraggedItem(null)} onDragOver={(event) => event.preventDefault()} onDrop={(event) => { event.preventDefault(); dropOnBoard(rowIndex, columnIndex) }}>{draft ? draft.isBlank ? draft.letter || '☆' : draft.letter : tile?.letter ?? (premium ? premiumShortLabel(premium) : '')}</button>
+            }))}
+          </div>
+          <div className="rack-drop-zone">
+            <div className="rack-tiles tournament-rack" aria-label={visibleRack ? `Your rack ${visibleRack}` : 'Your rack is empty until the game starts'}>
+              {visibleRack ? [...visibleRack].map((letter, index) => {
+                const inDraft = draftTiles.some((tile) => tile.rackIndex === index)
+                const displayLetter = letter === '?' ? '☆' : letter
+                return <div className={`rack-tile-wrap ${inDraft ? 'in-draft' : ''}`} key={`${letter}-${index}`}><button className={`rack-tile rack-select ${activeRackIndex === index ? 'active' : ''}`} draggable={!inDraft && running && game.currentPlayer === 'human' && !locked} onClick={() => setActiveRackIndex(index)} onDragStart={(event) => startDrag({ kind: 'rack', rackIndex: index }, event)} onDragEnd={() => setDraggedItem(null)} disabled={inDraft || !running || game.currentPlayer !== 'human' || locked} title={inDraft ? 'Already on the board' : `Place ${displayLetter}`}>{displayLetter}</button><label className="exchange-check"><input type="checkbox" checked={selectedRack.includes(index)} onChange={() => toggleExchangeTile(index)} disabled={inDraft || !running || game.currentPlayer !== 'human' || locked} aria-label={`Select ${displayLetter} for exchange`} /><span>exchange</span></label></div>
+              }) : <div className="rack-empty"><Icon name="grid" /><span><strong>Your rack appears when the clock starts.</strong><small>Set your game options above, then start the round.</small></span></div>}
+            </div>
+            <div className="rack-actions"><button className="button secondary" onClick={exchange} disabled={!running || game.currentPlayer !== 'human' || locked || !selectedRack.length}>Exchange selected</button><small>{activeRackIndex === null ? 'Drag or click a tile to place it.' : `Tile ${game.racks.human[activeRackIndex]} selected for placement.`}</small></div>
+          </div>
+        </section>
+
+        <section className="turn-card">
+          <div className="turn-card-heading"><div><div className="eyebrow">YOUR TURN</div><h2>{running ? game.currentPlayer === 'human' ? 'Build your play.' : 'Opponent is thinking.' : finished ? 'Game complete.' : 'Ready when you are.'}</h2></div><span className="turn-number">TURN {game.turnNumber}</span></div>
+          <div className="scoreboard" aria-label="Tournament score">
+            <div className="score-row score-you"><span>You</span><strong>{game.scores.human}</strong></div>
+            <div className="score-row score-opponent"><span>Opponent</span><strong>{game.scores.opponent}</strong></div>
+          </div>
+          <p className="lab-copy">{running ? 'Place your tiles directly on the board. Your draft is editable until you check it; after a legal check, it locks for the decision.' : 'Start the clock to receive a rack and begin from the center square.'}</p>
+          <div className={`draft-summary ${draftPlacement ? 'ready' : ''}`} aria-live="polite"><span className="draft-summary-label">DRAFT PLAY</span><strong>{draftPlacement?.word || '—'}</strong><small>{draftStatus}</small></div>
+          {draftTiles.some((tile) => tile.isBlank) && <div className="blank-assignment"><span>Blank tile letters</span>{draftTiles.filter((tile) => tile.isBlank).map((tile) => <label key={tile.rackIndex}><span>☆ at {tile.row + 1},{tile.column + 1}</span><input value={tile.letter} onChange={(event) => assignBlank(tile.rackIndex, event.target.value)} maxLength={1} placeholder="A" aria-label={`Letter for blank tile at row ${tile.row + 1}, column ${tile.column + 1}`} disabled={locked} /></label>)}</div>}
+          <div className="turn-actions"><button className="button primary" onClick={checkPlacement} disabled={!running || game.currentPlayer !== 'human' || locked || !draftPlacement}>Check placement <Icon name="check" /></button><button className="button secondary" onClick={pass} disabled={!running || game.currentPlayer !== 'human' || locked || draftTiles.length > 0}>Pass turn</button></div>
+          {result && <div className={`turn-result ${result.legal ? 'legal' : 'illegal'}`}><span className="card-result-icon"><Icon name={result.legal ? 'check' : 'x'} /></span><div><strong>{result.legal ? `${result.placement.word} · ${result.score} points${result.bingo ? ' · bingo' : ''}` : 'Play not legal'}</strong><small>{result.legal ? `${result.formedWords.map((word) => `${word.word} (${word.score})`).join(' ')} · ${categoryForPlay(result.placement.word, game.dictionarySource)?.sourceSection ?? 'Selected dictionary'}` : result.reason}</small></div></div>}
+          {result?.legal && <div className="decision-row"><button className="button secondary" onClick={() => finishTurn('played')}>Play it</button><button className="button secondary" onClick={() => finishTurn('challenged')}>Challenge decision</button></div>}
+          {decisionMessage && <div className="decision-message"><Icon name="check" /> {decisionMessage}</div>}
+          <div className="turn-log"><div className="turn-log-heading"><div><div className="eyebrow">TURN LOG</div><strong>{totalScore} points · {history.filter((turn) => turn.player === 'human' && turn.type === 'play').length} plays</strong></div><small>{game.finished ? `${game.scores.human > game.scores.opponent ? 'You win' : game.scores.human < game.scores.opponent ? 'Opponent wins' : 'Tie'} · ${game.endReason === 'passes' ? 'six passes' : 'rack-out'}` : `${game.history.length} turns`}</small></div>{history.length ? <div className="turn-log-list">{history.slice(-6).reverse().map((turn, index) => <div className="turn-log-row" key={`${turn.player}-${turn.type}-${turn.word ?? turn.tiles ?? 'pass'}-${index}`}><span className={`attempt-mark ${turn.player === 'human' ? 'yes' : 'no'}`}><Icon name={turn.type === 'play' ? 'check' : 'clock'} /></span><strong>{turn.player === 'human' ? 'You' : 'Opponent'}{turn.word ? ` · ${turn.word}` : ` · ${turn.type}`}</strong><span>{turn.score ? `${turn.score} pts` : turn.type === 'exchange' ? `${turn.tiles} exchanged` : 'Pass'}</span></div>)}</div> : <small className="turn-log-empty">Your turns will appear here.</small>}</div>
+        </section>
+      </div>
+    </div>
+  )
 }
+
+const boardHasTilesForUi = (game: TournamentGame) => game.board.some((row) => row.some(Boolean))
+const premiumShortLabel = (premium: NonNullable<ReturnType<typeof premiumAt>>) => ({ 'double-letter': '2L', 'triple-letter': '3L', 'double-word': '2W', 'triple-word': '3W' }[premium])
 
 function ProgressDashboard({ attempts, onBack }: { attempts: Attempt[]; onBack: () => void }) {
   const recent = attempts.slice(0, 8); const weak = weakWords(attempts, 12); const due = dueWords(attempts); const stats = wordStats(attempts)

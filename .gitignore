@@ -3,3 +3,8 @@ dist/
 .dev.vars
 .wrangler/
 .DS_Store
+.commandcode/
+# CSW24 raw inputs — regenerated from Zyzzyva DB via scripts/extract_csw24.py
+data/source/csw24.txt
+data/source/csw24-with-definitions.json
+data/source/csw24-with-definitions.tsv

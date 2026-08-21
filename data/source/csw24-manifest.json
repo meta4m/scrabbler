@@ -1,0 +1,8 @@
+{
+  "lexicon": "CSW24",
+  "source": "Zyzzyva 3.4.2 sqlite lexicon at /home/iu/Zyzzyva/lexicons/CSW24.db (original word text at /home/iu/zyzzyva/data/words/British/CSW24.txt)",
+  "word_count": 280887,
+  "min_length": 2,
+  "max_length": 15,
+  "generated": "2026-08-19"
+}

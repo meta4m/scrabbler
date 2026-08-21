@@ -83,7 +83,7 @@ describe('word helpers', () => {
     const finished = playGameMove(rackOut, { word: 'QI', row: CENTER, column: CENTER, direction: 'horizontal' }, 'human').game
     expect(finished.finished).toBe(true)
     expect(finished.endReason).toBe('empty-rack')
-    expect(finished.scores).toEqual({ human: 24, opponent: -2 })
+    expect(finished.scores).toEqual({ human: 26, opponent: -4 })
     let passed = base
     for (let index = 0; index < 6; index += 1) passed = passTurn(passed)
     expect(passed.finished).toBe(true)

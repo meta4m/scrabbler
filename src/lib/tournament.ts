@@ -1,4 +1,4 @@
-import { canBuildFromRack, normalize, tileValue, uniqueSourceWords, wordsForDictionary, type DictionarySourceId, type Word } from '../data/words'
+import { canBuildFromRack, hasWord, hasWordAsync, isFullDictionaryLoaded, loadFullDictionary, normalize, tileValue, uniqueSourceWords, wordsForDictionary, wordsForDictionaryAsync, type DictionarySourceId, type Word } from '../data/words'
 import { createTileBag, drawTiles, randomFloat, randomRack } from './scrabble'
 
 export const BOARD_SIZE = 15
@@ -69,12 +69,8 @@ export const emptyBoard = (): Board => Array.from({ length: BOARD_SIZE }, () => 
 export const cloneBoard = (board: Board): Board => board.map((row) => row.map((tile) => tile ? { ...tile } : null))
 export const boardHasTiles = (board: Board) => board.some((row) => row.some(Boolean))
 export const wordAt = (position: TournamentPosition, row: number, column: number) => position.board[row]?.[column]?.letter ?? null
-const sourceWordSet = new Set(uniqueSourceWords.map((word) => word.spelling))
-const dictionaryWordSets: Record<DictionarySourceId, Set<string>> = {
-  focused: sourceWordSet,
-  full: new Set(wordsForDictionary('full').map((word) => word.spelling)),
-}
 export const categoryForPlay = (word: string, source: DictionarySourceId = 'focused'): Word | undefined => wordsForDictionary(source).find((candidate) => candidate.spelling === normalize(word))
+export const categoryForPlayAsync = async (word: string, source: DictionarySourceId = 'focused'): Promise<Word | undefined> => (await wordsForDictionaryAsync(source)).find((candidate) => candidate.spelling === normalize(word))
 
 const keyFor = (row: number, column: number) => `${row},${column}`
 const inBounds = (row: number, column: number) => row >= 0 && row < BOARD_SIZE && column >= 0 && column < BOARD_SIZE
@@ -89,7 +85,8 @@ const coordinatesFor = (placement: Placement): BoardCoordinate[] => {
 const premiumMultiplier = (premium: Premium | null) => premium === 'double-letter' ? 2 : premium === 'triple-letter' ? 3 : premium === 'double-word' ? 2 : premium === 'triple-word' ? 3 : 1
 const isWordPremium = (premium: Premium | null) => premium === 'double-word' || premium === 'triple-word'
 const isLetterPremium = (premium: Premium | null) => premium === 'double-letter' || premium === 'triple-letter'
-const sourceWordExists = (word: string, source: DictionarySourceId = 'focused') => dictionaryWordSets[source].has(normalize(word))
+const sourceWordExists = (word: string, source: DictionarySourceId = 'focused') => hasWord(word, source)
+const sourceWordExistsAsync = (word: string, source: DictionarySourceId = 'focused') => hasWordAsync(word, source)
 const dictionaryLabel = (source: DictionarySourceId) => source === 'full' ? 'the full CSW24 dictionary' : 'the focused study source'
 
 const rackTilesForWord = (word: string, rack: string) => {
@@ -135,10 +132,10 @@ const scoreWordCells = (board: Board, cells: BoardCoordinate[], newlyPlaced: Map
 
 const invalidMove = (placement: Placement, reason: string): MoveResult => ({ legal: false, reason, score: 0, bingo: false, placement, placedTiles: [], formedWords: [] })
 
-export const validatePlacement = (board: Board, rack: string, rawPlacement: Placement, dictionarySource: DictionarySourceId = 'focused'): MoveResult => {
+const validatePlacementCore = (board: Board, rack: string, rawPlacement: Placement, dictionarySource: DictionarySourceId, wordExists: (word: string) => boolean): MoveResult => {
   const placement = { ...rawPlacement, word: normalize(rawPlacement.word) }
   if (!placement.word) return invalidMove(placement, 'Enter a word.')
-  if (!sourceWordExists(placement.word, dictionarySource)) return invalidMove(placement, `That word is not in ${dictionaryLabel(dictionarySource)}.`)
+  if (!wordExists(placement.word)) return invalidMove(placement, `That word is not in ${dictionaryLabel(dictionarySource)}.`)
   const coordinates = coordinatesFor(placement)
   if (!coordinates.every(({ row, column }) => inBounds(row, column))) return invalidMove(placement, 'The word runs off the board.')
 
@@ -177,7 +174,7 @@ export const validatePlacement = (board: Board, rack: string, rawPlacement: Plac
     const crossCells = readLine(board, tile, crossDirection, overlay)
     if (crossCells.length <= 1) continue
     const crossWord = crossCells.map((coordinate) => tileAt(board, coordinate, overlay)?.letter ?? '').join('')
-    if (!sourceWordExists(crossWord, dictionarySource)) return invalidMove(placement, `The cross-word ${crossWord} is not in ${dictionaryLabel(dictionarySource)}.`)
+    if (!wordExists(crossWord)) return invalidMove(placement, `The cross-word ${crossWord} is not in ${dictionaryLabel(dictionarySource)}.`)
     formedWords.push({ word: crossWord, score: 0, cells: crossCells })
   }
   const placedMap = new Map(placedTiles.map((tile) => [keyFor(tile.row, tile.column), tile]))
@@ -185,6 +182,25 @@ export const validatePlacement = (board: Board, rack: string, rawPlacement: Plac
   const bingo = placedTiles.length === 7
   return { legal: true, score: formedWords.reduce((total, formedWord) => total + formedWord.score, 0) + (bingo ? 50 : 0), bingo, placement, placedTiles, formedWords }
 }
+
+export const validatePlacement = (board: Board, rack: string, rawPlacement: Placement, dictionarySource: DictionarySourceId = 'focused'): MoveResult => {
+  if (dictionarySource === 'full' && !isFullDictionaryLoaded()) {
+    const placement = { ...rawPlacement, word: normalize(rawPlacement.word) }
+    if (placement.word && !hasWord(placement.word, 'focused') && !hasWord(placement.word, 'full')) {
+      return { legal: false, reason: 'Full CSW24 is loading — try again in a moment.', score: 0, bingo: false, placement, placedTiles: [], formedWords: [] }
+    }
+  }
+  return validatePlacementCore(board, rack, rawPlacement, dictionarySource, (word) => sourceWordExists(word, dictionarySource))
+}
+
+export const validatePlacementAsync = async (board: Board, rack: string, rawPlacement: Placement, dictionarySource: DictionarySourceId = 'focused'): Promise<MoveResult> => {
+  if (dictionarySource === 'full' && !isFullDictionaryLoaded()) await loadFullDictionary()
+  return validatePlacementCore(board, rack, rawPlacement, dictionarySource, (word) => sourceWordExists(word, dictionarySource))
+}
+
+export const isFullDictionaryReady = () => isFullDictionaryLoaded()
+export const ensureFullDictionaryLoaded = () => loadFullDictionary()
+
 
 export const applyPlacement = (board: Board, move: MoveResult, player: Player = 'human'): Board => {
   if (!move.legal) return cloneBoard(board)
@@ -229,8 +245,9 @@ const finishGame = (game: TournamentGame, reason: TournamentGame['endReason'], f
   if (reason === 'empty-rack' && finisher) {
     const opponent = otherPlayer(finisher)
     const opponentTiles = rackValue(game.racks[opponent])
-    scores[finisher] += opponentTiles
-    scores[opponent] -= opponentTiles
+    const doubled = opponentTiles * 2
+    scores[finisher] += doubled
+    scores[opponent] -= doubled
   } else {
     scores.human -= rackValue(game.racks.human)
     scores.opponent -= rackValue(game.racks.opponent)
@@ -298,6 +315,20 @@ export const playGameMove = (game: TournamentGame, placement: Placement, player:
   return { game: finished, move }
 }
 
+export const playGameMoveAsync = async (game: TournamentGame, placement: Placement, player: Player = game.currentPlayer, random = randomFloat) => {
+  if (game.finished) return { game, move: invalidMove(placement, 'The game is already complete.') }
+  if (player !== game.currentPlayer) return { game, move: invalidMove(placement, `It is ${game.currentPlayer === 'human' ? 'your' : 'the opponent\'s'} turn.`) }
+  if (game.dictionarySource === 'full' && !isFullDictionaryLoaded()) await loadFullDictionary()
+  const move = playMove(game.board, game.racks[player], placement, player, game.dictionarySource)
+  if (!move.legal) return { game, move }
+  const remainingRack = removePlayedTiles(game.racks[player], move.placedTiles)
+  const bag = [...game.bag]
+  const racks = { ...game.racks, [player]: drawToRack(remainingRack, bag, random) }
+  const next: TournamentGame = { ...game, board: move.board ?? game.board, bag, racks, scores: { ...game.scores, [player]: game.scores[player] + move.score }, currentPlayer: otherPlayer(player), consecutivePasses: 0, turnNumber: game.turnNumber + 1, history: [...game.history, { player, type: 'play', word: move.placement.word, score: move.score, row: move.placement.row, column: move.placement.column, direction: move.placement.direction }] }
+  const finished = bag.length === 0 && racks[player].length === 0 ? finishGame(next, 'empty-rack', player) : next
+  return { game: finished, move }
+}
+
 export const passTurn = (game: TournamentGame): TournamentGame => {
   if (game.finished) return game
   const next: TournamentGame = { ...game, currentPlayer: otherPlayer(game.currentPlayer), consecutivePasses: game.consecutivePasses + 1, turnNumber: game.turnNumber + 1, history: [...game.history, { player: game.currentPlayer, type: 'pass', score: 0 }] }
@@ -337,9 +368,32 @@ export const findBestMove = (board: Board, rack: string, dictionarySource: Dicti
   return best?.placement ?? null
 }
 
+export const findBestMoveAsync = async (board: Board, rack: string, dictionarySource: DictionarySourceId = 'focused'): Promise<Placement | null> => {
+  if (dictionarySource === 'full' && !isFullDictionaryLoaded()) await loadFullDictionary()
+  const candidates = wordsForDictionary(dictionarySource).filter((word) => word.length >= 2 && word.length <= 8 && canBuildFromRack(word.spelling, rack)).sort((left, right) => right.length - left.length || left.spelling.localeCompare(right.spelling))
+  let best: { placement: Placement; move: MoveResult } | null = null
+  for (const candidate of candidates) {
+    for (const direction of ['horizontal', 'vertical'] as Direction[]) {
+      for (const placement of placementsNearBoard(board, candidate.spelling, direction)) {
+        const move = validatePlacement(board, rack, placement, dictionarySource)
+        if (!move.legal) continue
+        if (!best || move.score > best.move.score || (move.score === best.move.score && (candidate.length > best.placement.word.length || (candidate.length === best.placement.word.length && candidate.spelling < best.placement.word)))) best = { placement, move }
+      }
+    }
+  }
+  return best?.placement ?? null
+}
+
 export const playOpponentTurn = (game: TournamentGame, random = randomFloat) => {
   if (game.finished || game.currentPlayer !== 'opponent') return { game, move: null as MoveResult | null }
   const placement = findBestMove(game.board, game.racks.opponent, game.dictionarySource)
+  if (!placement) return { game: passTurn(game), move: null as MoveResult | null }
+  return playGameMove(game, placement, 'opponent', random)
+}
+
+export const playOpponentTurnAsync = async (game: TournamentGame, random = randomFloat) => {
+  if (game.finished || game.currentPlayer !== 'opponent') return { game, move: null as MoveResult | null }
+  const placement = await findBestMoveAsync(game.board, game.racks.opponent, game.dictionarySource)
   if (!placement) return { game: passTurn(game), move: null as MoveResult | null }
   return playGameMove(game, placement, 'opponent', random)
 }

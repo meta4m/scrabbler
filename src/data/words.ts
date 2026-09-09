@@ -1,5 +1,6 @@
 import bingoSeed from './bingo-families.json'
 import sourceWords from './source-words.json'
+import { flattenRanks, matchRank, queryKeys } from '../lib/lookup-search'
 
 export type DrillType = '2-letter' | 'power' | 'bingo' | 'dumps' | 'all' | 'mixed'
 export type WordCategory = '2-letter' | '3-letter' | 'power' | 'bingo' | 'high-probability-bingo' | 'i-dump' | 'u-dump' | 'vowel-dump' | 'csw24'
@@ -153,24 +154,32 @@ export const wordsFromRack = (rack: string, source: DictionarySourceId = 'focuse
 
 export type LookupCategory = 'all' | '2-letter' | 'power' | 'dump' | 'csw24'
 
+const compareSpelling = (a: Word, b: Word) => (a.spelling < b.spelling ? -1 : a.spelling > b.spelling ? 1 : 0)
+
+const matchesLookupCategory = (word: Word, category: LookupCategory, dictionary: DictionarySourceId): boolean => {
+  if (dictionary === 'full') return category === '2-letter' ? word.length === 2 : true
+  if (category === 'all') return true
+  if (category === 'csw24') return word.category === 'csw24'
+  if (category === 'dump') return categoriesForWord(word.spelling).some((entry) => entry.endsWith('dump'))
+  return categoriesForWord(word.spelling).includes(category)
+}
+
 export const filterLookupWords = (
   words: Word[],
   query: string,
   category: LookupCategory,
   dictionary: DictionarySourceId,
 ): Word[] => {
-  const q = normalize(query)
-  if (!q) return []
-  return words.filter((word) => {
-    const matchesQuery = word.spelling.includes(q) || word.signature.includes(q)
-    const matchesCategory = dictionary === 'full'
-      ? (category === '2-letter' ? word.length === 2 : true)
-      : category === 'all' ? true
-      : category === 'csw24' ? word.category === 'csw24'
-      : category === 'dump' ? categoriesForWord(word.spelling).some((cat) => cat.endsWith('dump'))
-      : categoriesForWord(word.spelling).includes(category)
-    return matchesQuery && matchesCategory
-  })
+  const keys = queryKeys(query)
+  if (!keys.q) return []
+  const buckets: Word[][] = [[], [], [], [], []]
+  for (const word of words) {
+    if (!matchesLookupCategory(word, category, dictionary)) continue
+    const rank = matchRank(word.spelling, word.signature, keys)
+    if (rank >= 0) buckets[rank]?.push(word)
+  }
+  for (const bucket of buckets) bucket.sort(compareSpelling)
+  return flattenRanks(buckets)
 }
 
 export const wordsFromRackAsync = async (rack: string, source: DictionarySourceId = 'focused'): Promise<Word[]> => {

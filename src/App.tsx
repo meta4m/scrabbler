@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type DragEvent as ReactDragEvent } from 'react'
-import { bingoFamilies, categoryLabels, definitionForWord, dictionarySourceOptions, filterLookupWords, isFullDictionaryLoaded, loadFullDictionary, normalize, scoreWord, syncDefinitionForWord, type DictionarySourceId, type DrillType, type LookupCategory, type Word, uniqueSourceWords, words, wordsForDictionary, wordsForDrill, wordsFromRack } from './data/words'
+import { bingoFamilies, categoryLabels, definitionForWord, dictionarySourceOptions, isFullDictionaryLoaded, normalize, scoreWord, syncDefinitionForWord, type DictionarySourceId, type DrillType, type LookupCategory, uniqueSourceWords, words, wordsForDrill, wordsFromRack } from './data/words'
+import { useLookupSearch, type LookupSearchState } from './lib/lookup-client'
+import { PAGE_SIZE_OPTIONS, pageTokens, resultRange } from './lib/lookup-search'
 import { accuracy, averageLatency, drillLabel, dueWords, loadAttempts, mergeAttempts, saveAttempt, selectAdaptiveWord, weakWords, wordStats, type Attempt } from './lib/training'
 import { loadProfile, loadRemoteAttempts, syncRemoteAttempts, type ProfileUser } from './lib/auth'
 import { anagramsFor, bingoFamilyFor, dumpPlaysFor, extensionsFor, hooksFor, rackPlays, randomRack } from './lib/scrabble'
@@ -30,7 +32,6 @@ function App() {
   const [query, setQuery] = useState('')
   const [lookupCategory, setLookupCategory] = useState<LookupCategory>('all')
   const [lookupDictionary, setLookupDictionary] = useState<DictionarySourceId>('focused')
-  const [lookupLoading, setLookupLoading] = useState(false)
 
   const beginDrill = (drill: DrillType) => { setActiveDrill(drill); setView('drill') }
   useEffect(() => {
@@ -61,17 +62,7 @@ function App() {
     }
   }
 
-  const [lookupWords, setLookupWords] = useState(() => wordsForDictionary('focused'))
-  useEffect(() => {
-    if (lookupDictionary === 'focused') { setLookupWords(wordsForDictionary('focused')); return }
-    let cancelled = false
-    setLookupLoading(true)
-    void loadFullDictionary().then((list) => { if (!cancelled) { setLookupWords(list); setLookupLoading(false) } })
-    return () => { cancelled = true }
-  }, [lookupDictionary])
-  const normalizedQuery = normalize(query)
-  const fullMatches = useMemo(() => filterLookupWords(lookupWords, query, lookupCategory, lookupDictionary), [lookupCategory, lookupDictionary, lookupWords, normalizedQuery])
-  const results = fullMatches.slice(0, 200)
+  const lookup = useLookupSearch(query, lookupCategory, lookupDictionary)
 
   return <div className="app-shell">
     <header className="topbar">
@@ -87,7 +78,7 @@ function App() {
     </header>
     <main>
       {view === 'home' && <Home onLookup={() => setView('lookup')} onDrill={beginDrill} attempts={attempts} />}
-      {view === 'lookup' && <Lookup query={query} setQuery={setQuery} category={lookupCategory} setCategory={setLookupCategory} results={results} totalMatches={fullMatches.length} dictionary={lookupDictionary} setDictionary={setLookupDictionary} loading={lookupLoading} onBack={() => setView('home')} />}
+      {view === 'lookup' && <Lookup query={query} setQuery={setQuery} category={lookupCategory} setCategory={setLookupCategory} search={lookup} dictionary={lookupDictionary} setDictionary={setLookupDictionary} onBack={() => setView('home')} />}
       {view === 'drill' && <Drills active={activeDrill} attempts={attempts} onSelect={beginDrill} onRecord={record} onBack={() => setView('home')} />}
       {view === 'progress' && <ProgressDashboard attempts={attempts} onBack={() => setView('home')} />}
       {view === 'rack' && <RackLab onBack={() => setView('home')} />}
@@ -116,21 +107,49 @@ function Home({ onLookup, onDrill, attempts }: { onLookup: () => void; onDrill: 
 
 function Stat({ value, label }: { value: string; label: string }) { return <div className="stat"><strong>{value}</strong><span>{label}</span></div> }
 
-function Lookup({ query, setQuery, category, setCategory, results, totalMatches, dictionary, setDictionary, loading, onBack }: { query: string; setQuery: (value: string) => void; category: LookupCategory; setCategory: (value: LookupCategory) => void; results: Word[]; totalMatches: number; dictionary: DictionarySourceId; setDictionary: (value: DictionarySourceId) => void; loading: boolean; onBack: () => void }) {
+function Lookup({ query, setQuery, category, setCategory, search, dictionary, setDictionary, onBack }: { query: string; setQuery: (value: string) => void; category: LookupCategory; setCategory: (value: LookupCategory) => void; search: LookupSearchState; dictionary: DictionarySourceId; setDictionary: (value: DictionarySourceId) => void; onBack: () => void }) {
   const [activeDefinition, setActiveDefinition] = useState<string | null>(null); const [definitionText, setDefinitionText] = useState<string>(''); const [defLoading, setDefLoading] = useState(false)
   useEffect(() => { if (!activeDefinition) return; let cancelled = false; setDefLoading(true); void definitionForWord(activeDefinition).then((text) => { if (!cancelled) { setDefinitionText(text ?? 'No definition found.'); setDefLoading(false) } }); return () => { cancelled = true } }, [activeDefinition])
-  const filteredByLength = dictionary === 'full'
-  const pillOptions = filteredByLength
+  const pillOptions = dictionary === 'full'
     ? [['all', 'All words'], ['2-letter', '2-letter only']]
     : [['all', 'All words'], ['2-letter', '2-letter'], ['power', 'J/Q/X/Z'], ['dump', 'Dumps'], ['csw24', 'CSW24']]
-  const metaLabel = loading
+  const range = resultRange(search.page, search.pageSize, search.total)
+  const metaLabel = search.loading
     ? 'Loading CSW24…'
     : !normalize(query)
       ? (dictionary === 'full' ? 'Type a letter or word to search 280,887 CSW24 words.' : 'Type a letter or word to search the study source.')
-      : totalMatches > 200
-        ? `${totalMatches.toLocaleString()} matches · showing first 200`
-        : `${totalMatches.toLocaleString()} matching ${dictionary === 'full' ? 'CSW24' : 'source'} word${totalMatches === 1 ? '' : 's'}`
-  return <div className="content-page"><style>{'@keyframes defSpin{to{transform:rotate(360deg)}}'}</style><PageIntro eyebrow="WORD LOOKUP" title="Find your next word." copy="Search the study source or the full CSW24 dictionary by spelling or letter signature. Click any word to see its definition." onBack={onBack} /><div className="filter-row" role="group" aria-label="Dictionary source"><button className={dictionary === 'focused' ? 'filter active' : 'filter'} onClick={() => setDictionary('focused')}>Focused ({dictionarySourceOptions[0]?.wordCount})</button><button className={dictionary === 'full' ? 'filter active' : 'filter'} onClick={() => setDictionary('full')}>Full CSW24 (280,887) {loading ? '· loading…' : isFullDictionaryLoaded() ? '· ready' : ''}</button></div><div className="search-wrap"><Icon name="search" /><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Try 'QI', 'AEINST' or 'Z'…" aria-label="Search words" /></div><div className="filter-row" role="group" aria-label="Filter words">{pillOptions.map(([value, label]) => <button key={value} className={category === value ? 'filter active' : 'filter'} onClick={() => setCategory(value as 'all' | '2-letter' | 'power' | 'dump' | 'csw24')}>{label}</button>)}</div><div className="result-meta">{metaLabel}</div>{activeDefinition && <div style={{ margin:'10px 0 16px', padding:'14px 16px', border:'1px solid var(--line)', background:'#f8fffd', fontSize:14 }}><strong style={{ fontSize:16, letterSpacing:'.04em' }}>{activeDefinition}</strong><span style={{ display:'flex', alignItems:'center', gap:8, marginTop:8, color:'var(--ink)', lineHeight:1.5 }}>{defLoading ? <><span style={{ width:14, height:14, border:'2px solid var(--line)', borderTopColor:'var(--teal)', borderRadius:'50%', display:'inline-block', animation:'defSpin .6s linear infinite' }} /> Loading definition…</> : definitionText || syncDefinitionForWord(activeDefinition) || 'No definition found.'}</span></div>}<div className="word-table">{results.map((word) => <div style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 4px', borderBottom:'1px solid var(--line)', minHeight:48 }} key={word.spelling}><span style={{ minWidth:36, textAlign:'center', fontFamily:'DM Mono, monospace', fontSize:11, color:'var(--muted)', border:'1px solid var(--line)', borderRadius:4, padding:'2px 0', flexShrink:0 }}>{word.length}L</span><span style={{ flex:1, minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:18, fontWeight:600, letterSpacing:'.04em' }}>{word.spelling}<span style={{ marginLeft:10, fontSize:12, fontWeight:400, color:'var(--muted)' }}>{word.signature} · {categoryLabels[word.category]}</span></span><button type="button" onClick={() => { setActiveDefinition(word.spelling); void definitionForWord(word.spelling).then((text) => { setDefinitionText(text ?? 'No definition found.'); setDefLoading(false) }) }} title="See definition" aria-label={`See definition of ${word.spelling}`} style={{ flexShrink:0, background:'none', border:0, padding:4, cursor:'pointer', color:'var(--teal)', display:'grid', placeItems:'center', width:28, height:28 }}><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="10.5" cy="10.5" r="7" /><line x1="15.5" y1="15.5" x2="21" y2="21" /></svg></button></div>)}{!results.length && !loading && normalize(query) && <div className="empty-state">No {dictionary === 'full' ? 'CSW24' : 'source'} words match that search yet.</div>}</div>{totalMatches > 200 && !loading && normalize(query) && <div style={{ marginTop:10, fontSize:12, color:'var(--muted)', fontFamily:'DM Mono, monospace' }}>Showing the first 200 of {totalMatches.toLocaleString()} matches. Refine the query to narrow the list.</div>}</div>
+      : search.searching && search.total === 0
+        ? 'Searching CSW24…'
+        : range
+          ? `${search.total.toLocaleString()} matching ${dictionary === 'full' ? 'CSW24' : 'source'} word${search.total === 1 ? '' : 's'} · showing ${range.start}–${range.end}${search.searching ? ' · searching…' : ''}`
+          : `No matching ${dictionary === 'full' ? 'CSW24' : 'source'} words yet.`
+  return <div className="content-page"><style>{'@keyframes defSpin{to{transform:rotate(360deg)}}'}</style><PageIntro eyebrow="WORD LOOKUP" title="Find your next word." copy="Search the study source or the full CSW24 dictionary by spelling or letter signature. Click any word to see its definition." onBack={onBack} /><div className="filter-row" role="group" aria-label="Dictionary source"><button className={dictionary === 'focused' ? 'filter active' : 'filter'} onClick={() => setDictionary('focused')}>Focused ({dictionarySourceOptions[0]?.wordCount})</button><button className={dictionary === 'full' ? 'filter active' : 'filter'} onClick={() => setDictionary('full')}>Full CSW24 (280,887) {search.loading ? '· loading…' : isFullDictionaryLoaded() ? '· ready' : ''}</button></div><div className="search-wrap"><Icon name="search" /><input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Try 'QI', 'AEINST' or 'Z'…" aria-label="Search words" /></div><div className="filter-row" role="group" aria-label="Filter words">{pillOptions.map(([value, label]) => <button key={value} className={category === value ? 'filter active' : 'filter'} onClick={() => setCategory(value as 'all' | '2-letter' | 'power' | 'dump' | 'csw24')}>{label}</button>)}</div><div className="result-meta">{metaLabel}</div><LookupPagination search={search} />{activeDefinition && <div style={{ margin:'10px 0 16px', padding:'14px 16px', border:'1px solid var(--line)', background:'#f8fffd', fontSize:14 }}><strong style={{ fontSize:16, letterSpacing:'.04em' }}>{activeDefinition}</strong><span style={{ display:'flex', alignItems:'center', gap:8, marginTop:8, color:'var(--ink)', lineHeight:1.5 }}>{defLoading ? <><span style={{ width:14, height:14, border:'2px solid var(--line)', borderTopColor:'var(--teal)', borderRadius:'50%', display:'inline-block', animation:'defSpin .6s linear infinite' }} /> Loading definition…</> : definitionText || syncDefinitionForWord(activeDefinition) || 'No definition found.'}</span></div>}<div className="word-table">{search.results.map((word) => <div style={{ display:'flex', alignItems:'center', gap:12, padding:'10px 4px', borderBottom:'1px solid var(--line)', minHeight:48 }} key={word.spelling}><span style={{ minWidth:36, textAlign:'center', fontFamily:'DM Mono, monospace', fontSize:11, color:'var(--muted)', border:'1px solid var(--line)', borderRadius:4, padding:'2px 0', flexShrink:0 }}>{word.length}L</span><span style={{ flex:1, minWidth:0, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap', fontSize:18, fontWeight:600, letterSpacing:'.04em' }}>{word.spelling}<span style={{ marginLeft:10, fontSize:12, fontWeight:400, color:'var(--muted)' }}>{word.signature} · {categoryLabels[word.category]}</span></span><button type="button" onClick={() => { setActiveDefinition(word.spelling); void definitionForWord(word.spelling).then((text) => { setDefinitionText(text ?? 'No definition found.'); setDefLoading(false) }) }} title="See definition" aria-label={`See definition of ${word.spelling}`} style={{ flexShrink:0, background:'none', border:0, padding:4, cursor:'pointer', color:'var(--teal)', display:'grid', placeItems:'center', width:28, height:28 }}><svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="10.5" cy="10.5" r="7" /><line x1="15.5" y1="15.5" x2="21" y2="21" /></svg></button></div>)}{!search.results.length && !search.loading && !search.searching && normalize(query) && <div className="empty-state">No {dictionary === 'full' ? 'CSW24' : 'source'} words match that search yet.</div>}</div>{search.pageCount > 1 && <div style={{ marginTop:12 }}><Pager search={search} /></div>}</div>
+}
+
+function Pager({ search }: { search: LookupSearchState }) {
+  if (search.pageCount <= 1) return null
+  const tokens = pageTokens(search.page, search.pageCount)
+  const buttonStyle = (disabled: boolean): CSSProperties => ({ padding: '6px 11px', fontSize: 12, ...(disabled ? { opacity: 0.4 } : {}) })
+  return <nav aria-label="Result pages" style={{ display: 'flex', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+    <button className="filter" style={buttonStyle(search.page <= 1)} disabled={search.page <= 1} onClick={() => search.setPage(1)}>« First</button>
+    <button className="filter" style={buttonStyle(search.page <= 1)} disabled={search.page <= 1} onClick={() => search.setPage(search.page - 1)}>‹ Prev</button>
+    {tokens.map((token, index) => token === 'ellipsis'
+      ? <span key={`ellipsis-${index}`} style={{ color: 'var(--muted)', fontFamily: 'DM Mono, monospace', fontSize: 12, padding: '0 2px' }}>…</span>
+      : <button key={token} className={token === search.page ? 'filter active' : 'filter'} style={buttonStyle(false)} aria-current={token === search.page ? 'page' : undefined} onClick={() => search.setPage(token)}>{token}</button>)}
+    <button className="filter" style={buttonStyle(search.page >= search.pageCount)} disabled={search.page >= search.pageCount} onClick={() => search.setPage(search.page + 1)}>Next ›</button>
+    <button className="filter" style={buttonStyle(search.page >= search.pageCount)} disabled={search.page >= search.pageCount} onClick={() => search.setPage(search.pageCount)}>Last »</button>
+  </nav>
+}
+
+function LookupPagination({ search }: { search: LookupSearchState }) {
+  if (search.total <= 0) return null
+  return <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap', margin: '10px 0 14px' }}>
+    <Pager search={search} />
+    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginLeft: 'auto' }}>
+      <span style={{ color: 'var(--muted)', fontFamily: 'DM Mono, monospace', fontSize: 11 }}>per page</span>
+      {PAGE_SIZE_OPTIONS.map((size) => <button key={size} className={size === search.pageSize ? 'filter active' : 'filter'} style={{ padding: '6px 11px', fontSize: 12 }} onClick={() => search.setPageSize(size)}>{size}</button>)}
+    </div>
+  </div>
 }
 
 function PageIntro({ eyebrow, title, copy, onBack }: { eyebrow: string; title: string; copy: string; onBack: () => void }) { return <div className="page-intro"><button className="back-button" onClick={onBack}>← Back</button><div className="eyebrow">{eyebrow}</div><h1>{title}</h1><p>{copy}</p></div> }

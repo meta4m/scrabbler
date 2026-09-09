@@ -1,6 +1,8 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, afterEach } from 'vitest'
 import sourceWords from '../data/source-words.json'
+import csw24Words from '../data/csw24.json'
 import { categoriesForWord, filterLookupWords, normalize, wordsForDictionary, type Word } from '../data/words'
+import { clampPage, matchRank, pageCountFor, pageSlice, pageTokens, queryKeys, resultRange, type LookupWorkerRequest, type LookupWorkerResponse } from './lookup-search'
 
 const focusedWords = (): Word[] => wordsForDictionary('focused')
 
@@ -218,5 +220,175 @@ describe('filterLookupWords: output integrity', () => {
       const matchesSignature = word.signature.includes('AEINST')
       expect(matchesSpelling || matchesSignature).toBe(true)
     }
+  })
+})
+
+describe('matchRank: relevance ranking rules', () => {
+  const keys = queryKeys('SCOP')
+
+  it('normalizes and alphabetizes the query for signature matching', () => {
+    expect(keys).toEqual({ q: 'SCOP', sortedQ: 'COPS' })
+    expect(queryKeys(' scop ').q).toBe('SCOP')
+  })
+
+  it('ranks an exact spelling match as rank 0', () => {
+    expect(matchRank('SCOP', 'COPS', keys)).toBe(0)
+  })
+
+  it('ranks a spelling prefix match as rank 1', () => {
+    expect(matchRank('SCOPA', 'ACOPS', keys)).toBe(1)
+  })
+
+  it('ranks a spelling substring match as rank 2', () => {
+    expect(matchRank('HOROSCOPE', 'CEHOOOPRS', keys)).toBe(2)
+  })
+
+  it('ranks an exact anagram (signature equality) as rank 3', () => {
+    expect(matchRank('COPS', 'COPS', keys)).toBe(3)
+  })
+
+  it('ranks a signature substring match as rank 4', () => {
+    expect(matchRank('SSPOC', 'COPSS', keys)).toBe(4)
+  })
+
+  it('returns -1 when the word does not match the query', () => {
+    expect(matchRank('QI', 'IQ', keys)).toBe(-1)
+    expect(matchRank('SCOP', 'COPS', queryKeys(''))).toBe(-1)
+  })
+})
+
+describe('filterLookupWords: ranked result ordering', () => {
+  const mk = (spelling: string): Word => ({ spelling, length: spelling.length, signature: [...spelling].sort().join(''), category: 'csw24', sourceSection: 'CSW24' })
+
+  it('orders exact, prefix, substring, anagram, then signature matches', () => {
+    const words = [mk('HOROSCOPE'), mk('COPS'), mk('SSPOC'), mk('SCOPA'), mk('SCOP')]
+    const result = filterLookupWords(words, 'scop', 'all', 'full')
+    expect(result.map((w) => w.spelling)).toEqual(['SCOP', 'SCOPA', 'HOROSCOPE', 'COPS', 'SSPOC'])
+  })
+
+  it('finds anagram variants regardless of the typed letter order', () => {
+    const words = [mk('TISANE'), mk('TENAIS')]
+    const result = filterLookupWords(words, 'satine', 'all', 'full')
+    expect(result.map((w) => w.spelling)).toEqual(['TENAIS', 'TISANE'])
+  })
+
+  it('keeps words inside one rank bucket in alphabetical order', () => {
+    const words = [mk('ZSCOPA'), mk('ASCOPA'), mk('MSCOPA')]
+    const result = filterLookupWords(words, 'scop', 'all', 'full')
+    expect(result.map((w) => w.spelling)).toEqual(['ASCOPA', 'MSCOPA', 'ZSCOPA'])
+  })
+})
+
+describe('filterLookupWords: full CSW24 regression (SCOP must be reachable)', () => {
+  const full: Word[] = csw24Words.map((spelling) => ({ spelling, length: spelling.length, signature: [...spelling].sort().join(''), category: 'csw24' as const, sourceSection: 'CSW24' }))
+
+  it('imports the full CSW24 word list', () => {
+    expect(full.length).toBe(280887)
+    expect(csw24Words).toContain('SCOP')
+  })
+
+  it('ranks SCOP itself first for the query "scop"', () => {
+    const result = filterLookupWords(full, 'scop', 'all', 'full')
+    expect(result[0]?.spelling).toBe('SCOP')
+  })
+
+  it('keeps SCOP on page 1 at the default page size of 100', () => {
+    const result = filterLookupWords(full, 'scop', 'all', 'full')
+    expect(result.slice(0, 100).map((w) => w.spelling)).toContain('SCOP')
+  })
+
+  it('exposes every match for pagination instead of truncating at 200', () => {
+    const result = filterLookupWords(full, 'scop', 'all', 'full')
+    expect(result.length).toBeGreaterThan(500)
+    expect(new Set(result.map((w) => w.spelling)).size).toBe(result.length)
+  })
+
+  it('page 6 at size 100 still shows real matches deep in the result set', () => {
+    const result = filterLookupWords(full, 'scop', 'all', 'full')
+    const page6 = result.slice(500, 600)
+    expect(page6.length).toBeGreaterThan(0)
+    for (const word of page6) expect(word.spelling.includes('SCOP') || word.signature.includes('COPS')).toBe(true)
+  })
+})
+
+describe('pagination helpers', () => {
+  it('computes page counts from totals and page sizes', () => {
+    expect(pageCountFor(0, 100)).toBe(0)
+    expect(pageCountFor(1, 100)).toBe(1)
+    expect(pageCountFor(100, 100)).toBe(1)
+    expect(pageCountFor(101, 100)).toBe(2)
+    expect(pageCountFor(570, 100)).toBe(6)
+  })
+
+  it('clamps page numbers into the valid range', () => {
+    expect(clampPage(0, 5)).toBe(1)
+    expect(clampPage(1, 0)).toBe(1)
+    expect(clampPage(3, 5)).toBe(3)
+    expect(clampPage(9, 5)).toBe(5)
+  })
+
+  it('computes the visible result range', () => {
+    expect(resultRange(1, 100, 0)).toBe(null)
+    expect(resultRange(1, 100, 570)).toEqual({ start: 1, end: 100 })
+    expect(resultRange(6, 100, 570)).toEqual({ start: 501, end: 570 })
+    expect(resultRange(2, 50, 40)).toBe(null)
+  })
+
+  it('builds compact page token lists with ellipses', () => {
+    expect(pageTokens(1, 1)).toEqual([1])
+    expect(pageTokens(1, 7)).toEqual([1, 2, 3, 4, 5, 6, 7])
+    expect(pageTokens(1, 11)).toEqual([1, 2, 'ellipsis', 11])
+    expect(pageTokens(2, 11)).toEqual([1, 2, 3, 'ellipsis', 11])
+    expect(pageTokens(5, 11)).toEqual([1, 'ellipsis', 4, 5, 6, 'ellipsis', 11])
+    expect(pageTokens(10, 11)).toEqual([1, 'ellipsis', 9, 10, 11])
+    expect(pageTokens(11, 11)).toEqual([1, 'ellipsis', 10, 11])
+  })
+
+  it('maps ranked result indexes onto the current page', () => {
+    const items = ['SCOP', 'SCOPA', 'HOROSCOPE', 'COPS', 'SSPOC']
+    const indexes = new Uint32Array([0, 1, 2, 3, 4])
+    expect(pageSlice(items, indexes, 1, 2)).toEqual(['SCOP', 'SCOPA'])
+    expect(pageSlice(items, indexes, 2, 2)).toEqual(['HOROSCOPE', 'COPS'])
+    expect(pageSlice(items, indexes, 3, 2)).toEqual(['SSPOC'])
+    expect(pageSlice(items, indexes, 4, 2)).toEqual([])
+  })
+})
+
+describe('lookup.worker: message protocol', () => {
+  afterEach(() => { vi.unstubAllGlobals() })
+
+  const startWorker = async () => {
+    const posted: LookupWorkerResponse[] = []
+    const workerSelf: { onmessage: ((event: { data: LookupWorkerRequest }) => void) | null; postMessage: (message: LookupWorkerResponse, transfer?: unknown[]) => void } = {
+      onmessage: null,
+      postMessage: (message) => { posted.push(message) },
+    }
+    vi.stubGlobal('self', workerSelf)
+    await import('./lookup.worker')
+    const send = (request: LookupWorkerRequest) => workerSelf.onmessage?.({ data: request })
+    return { posted, send }
+  }
+
+  it('initializes from the joined word payload and answers with ranked, transferred indexes', async () => {
+    const { posted, send } = await startWorker()
+    send({ type: 'init', data: 'SCOP\nSCOPA\nHOROSCOPE\nCOPS\nCO' })
+    expect(posted).toEqual([{ type: 'ready' }])
+    send({ type: 'search', id: 1, query: 'scop', twoLetterOnly: false })
+    const result = posted[1]
+    expect(result?.type).toBe('result')
+    if (result?.type !== 'result') return
+    expect(result.id).toBe(1)
+    expect(result.total).toBe(4)
+    expect(Array.from(result.indexes)).toEqual([0, 1, 2, 3])
+    send({ type: 'search', id: 2, query: 'co', twoLetterOnly: true })
+    const twoLetter = posted[2]
+    if (twoLetter?.type !== 'result') throw new Error('expected a result message')
+    expect(twoLetter.total).toBe(1)
+    expect(Array.from(twoLetter.indexes)).toEqual([4])
+    send({ type: 'search', id: 3, query: '', twoLetterOnly: false })
+    const empty = posted[3]
+    if (empty?.type !== 'result') throw new Error('expected a result message')
+    expect(empty.total).toBe(0)
+    expect(Array.from(empty.indexes)).toEqual([])
   })
 })
